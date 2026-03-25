@@ -1,5 +1,153 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import * as browserPool from '@/lib/agents/browser-pool';
+
+// ─── Browser Tools for Claude ────────────────────────────────────────────────
+
+const BROWSER_TOOLS: Anthropic.Messages.Tool[] = [
+  {
+    name: 'browser_navigate',
+    description: 'Navigate to a URL in the browser. Use this to visit websites, login pages, dashboards, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: { type: 'string', description: 'The full URL to navigate to' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'browser_screenshot',
+    description: 'Take a screenshot of the current page. Use this to see what is on the page.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
+    name: 'browser_read_page',
+    description: 'Read the text content of the current page including links, buttons, and form fields. Use this to understand the page structure and content.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
+    name: 'browser_click',
+    description: 'Click an element on the page. Use CSS selectors like "button:has-text(\'Login\')", "#submit-btn", "a[href=\'/invoices\']", etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        selector: { type: 'string', description: 'CSS selector or text selector for the element to click' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'browser_fill',
+    description: 'Fill in a form field. Use CSS selectors like "input[name=\'email\']", "#password", "textarea.notes", etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        selector: { type: 'string', description: 'CSS selector for the input field' },
+        value: { type: 'string', description: 'The value to type into the field' },
+      },
+      required: ['selector', 'value'],
+    },
+  },
+  {
+    name: 'browser_press',
+    description: 'Press a keyboard key. Use for Enter, Tab, Escape, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        key: { type: 'string', description: 'The key to press (e.g. "Enter", "Tab", "Escape")' },
+      },
+      required: ['key'],
+    },
+  },
+];
+
+// ─── Execute a browser tool call ─────────────────────────────────────────────
+
+async function executeBrowserTool(
+  agentId: string,
+  toolName: string,
+  input: Record<string, string>
+): Promise<Anthropic.Messages.ToolResultBlockParam> {
+  try {
+    switch (toolName) {
+      case 'browser_navigate': {
+        const result = await browserPool.navigate(agentId, input.url);
+        return {
+          type: 'tool_result',
+          tool_use_id: '', // filled by caller
+          content: `Navigated to "${result.title}" (${result.url})`,
+        };
+      }
+      case 'browser_screenshot': {
+        const base64 = await browserPool.screenshot(agentId);
+        return {
+          type: 'tool_result',
+          tool_use_id: '',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/png', data: base64 },
+            },
+          ],
+        };
+      }
+      case 'browser_read_page': {
+        const text = await browserPool.getPageContent(agentId);
+        return {
+          type: 'tool_result',
+          tool_use_id: '',
+          content: text || '(empty page)',
+        };
+      }
+      case 'browser_click': {
+        const result = await browserPool.click(agentId, input.selector);
+        return {
+          type: 'tool_result',
+          tool_use_id: '',
+          content: result.success ? `Clicked "${input.selector}"` : `Failed to click: ${result.error}`,
+        };
+      }
+      case 'browser_fill': {
+        const result = await browserPool.fill(agentId, input.selector, input.value);
+        return {
+          type: 'tool_result',
+          tool_use_id: '',
+          content: result.success ? `Filled "${input.selector}" with value` : `Failed to fill: ${result.error}`,
+        };
+      }
+      case 'browser_press': {
+        const result = await browserPool.press(agentId, input.key);
+        return {
+          type: 'tool_result',
+          tool_use_id: '',
+          content: result.success ? `Pressed "${input.key}"` : `Failed to press: ${result.error}`,
+        };
+      }
+      default:
+        return {
+          type: 'tool_result',
+          tool_use_id: '',
+          content: `Unknown tool: ${toolName}`,
+        };
+    }
+  } catch (e) {
+    return {
+      type: 'tool_result',
+      tool_use_id: '',
+      content: `Error: ${String(e)}`,
+      is_error: true,
+    };
+  }
+}
+
+// ─── Main Agent Chat Handler ─────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -8,13 +156,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { agentId, messages, systemPrompt, linkedBlockIds } = await req.json();
-
   const client = new Anthropic({ apiKey });
 
   // Build agent-scoped system prompt
   const agentSystem = [
     systemPrompt || 'You are a helpful AI agent.',
     '',
+    'You have access to a browser you can use to navigate websites, read content, fill forms, and click elements.',
+    'Use the browser tools when the user asks you to interact with a website.',
     'You are scoped to a specific agent session. You can only interact with blocks you own.',
     linkedBlockIds?.length
       ? `Your linked blocks: ${linkedBlockIds.join(', ')}`
@@ -26,30 +175,71 @@ export async function POST(req: NextRequest) {
     'Only include <block-actions> when the user asks you to display data or create visual outputs.',
   ].join('\n');
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: agentSystem,
-    messages: messages.map((m: { role: string; content: string }) => ({
+  // Build message history
+  const apiMessages: Anthropic.Messages.MessageParam[] = messages.map(
+    (m: { role: string; content: string }) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
-    })),
-  });
+    })
+  );
 
-  const rawContent = response.content[0].type === 'text' ? response.content[0].text : '';
+  // Agent loop — run until Claude stops calling tools (max 10 iterations)
+  let finalText = '';
+  let blockActions: unknown[] = [];
 
-  // Parse block actions from response
-  let content = rawContent;
-  let blockActions = [];
+  for (let i = 0; i < 10; i++) {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: agentSystem,
+      tools: BROWSER_TOOLS,
+      messages: apiMessages,
+    });
 
-  const actionsMatch = rawContent.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
+    // Collect text and tool calls from the response
+    const toolCalls: Anthropic.Messages.ToolUseBlock[] = [];
+
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        finalText += block.text;
+      } else if (block.type === 'tool_use') {
+        toolCalls.push(block);
+      }
+    }
+
+    // If no tool calls, we're done
+    if (toolCalls.length === 0 || response.stop_reason === 'end_turn') {
+      break;
+    }
+
+    // Add assistant message with all content blocks
+    apiMessages.push({ role: 'assistant', content: response.content });
+
+    // Execute each tool call and collect results
+    const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+    for (const tc of toolCalls) {
+      const result = await executeBrowserTool(
+        agentId,
+        tc.name,
+        tc.input as Record<string, string>
+      );
+      result.tool_use_id = tc.id;
+      toolResults.push(result);
+    }
+
+    // Add tool results as user message
+    apiMessages.push({ role: 'user', content: toolResults });
+  }
+
+  // Parse block actions from final text
+  let content = finalText;
+  const actionsMatch = finalText.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
   if (actionsMatch) {
     try {
       blockActions = JSON.parse(actionsMatch[1]);
-      // Remove the tag from visible content
-      content = rawContent.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
+      content = finalText.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
     } catch {
-      // If parsing fails, just show the raw content
+      // If parsing fails, just show raw content
     }
   }
 
