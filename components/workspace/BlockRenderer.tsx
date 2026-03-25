@@ -9,6 +9,7 @@ import { Block } from '@/lib/workspace-types';
 import { APP_REGISTRY } from '@/lib/app-registry';
 import AgentChat from './AgentChat';
 import AgentManager from './AgentManager';
+import AiSummary from '../AiSummary';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -146,9 +147,10 @@ export default function BlockRenderer({ block }: { block: Block }) {
     case 'text':
       return (
         <div className="h-full overflow-auto">
-          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-            {config.textContent || 'No content yet.'}
-          </p>
+          {config.textContent
+            ? <AiSummary text={config.textContent} />
+            : <p className="text-sm text-gray-300">No content yet.</p>
+          }
         </div>
       );
 
@@ -296,7 +298,10 @@ export default function BlockRenderer({ block }: { block: Block }) {
             <p className="text-xs text-gray-300 truncate">{config.emailSubject || <span className="text-gray-600">—</span>}</p>
           </div>
           <div className="flex-1 overflow-auto border-t border-gray-700/50 pt-2">
-            <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">{config.emailBody || 'No body.'}</p>
+            {config.emailBody
+              ? <AiSummary text={config.emailBody} className="text-xs" />
+              : <p className="text-xs text-gray-400">No body.</p>
+            }
           </div>
           <button className="w-full py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/30 text-emerald-400 text-xs rounded-lg transition-colors">
             Open Draft

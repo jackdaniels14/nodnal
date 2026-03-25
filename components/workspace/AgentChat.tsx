@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Block, BlockConfig } from '@/lib/workspace-types';
+import { Block } from '@/lib/workspace-types';
 import { AgentDef, AgentMessage, AgentSession, BlockAction } from '@/lib/agents/agent-types';
+import AiSummary from '../AiSummary';
 import { getAgent } from '@/lib/agents/agent-registry';
 import { getSession, updateSession } from '@/lib/agents/agent-registry';
 
@@ -135,9 +136,12 @@ export default function AgentChat({ block, onBlockAction }: Props) {
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 pr-1">
         {messages.length === 0 && (
-          <p className="text-xs text-gray-500 italic">
-            {agent.description || `Chat with ${agent.name}...`}
-          </p>
+          <div className="text-xs text-gray-500 italic">
+            {agent.description
+              ? <AiSummary text={agent.description} maxLength={80} className="text-xs" />
+              : <p>Chat with {agent.name}...</p>
+            }
+          </div>
         )}
         {messages.map(m => (
           <div key={m.id} className={`text-xs rounded-lg px-2.5 py-1.5 max-w-[90%] ${
