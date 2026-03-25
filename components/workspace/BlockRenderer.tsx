@@ -7,6 +7,8 @@ import {
 } from 'recharts';
 import { Block } from '@/lib/workspace-types';
 import { APP_REGISTRY } from '@/lib/app-registry';
+import AgentChat from './AgentChat';
+import AgentManager from './AgentManager';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -339,6 +341,14 @@ export default function BlockRenderer({ block }: { block: Block }) {
         </div>
       );
     }
+
+    // ── Agent Block ──────────────────────────────────────────────────────────
+    case 'agent':
+      return <AgentChat block={block} />;
+
+    // ── Agent Manager ─────────────────────────────────────────────────────
+    case 'agent-manager':
+      return <AgentManager />;
 
     default:
       return null;

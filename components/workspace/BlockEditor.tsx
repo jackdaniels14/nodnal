@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Block, BlockType, BlockConfig, ExpansionRule, MovementRule } from '@/lib/workspace-types';
 import { APP_REGISTRY } from '@/lib/app-registry';
+import { getAgents } from '@/lib/agents/agent-registry';
 
 const BLOCK_TYPES: { type: BlockType; label: string; desc: string; icon: string }[] = [
   { type: 'stat',  label: 'Stat',   desc: 'Single number or value',        icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
@@ -15,6 +16,8 @@ const BLOCK_TYPES: { type: BlockType; label: string; desc: string; icon: string 
   { type: 'email', label: 'Email',  desc: 'Email draft or template',        icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
   { type: 'ai',    label: 'AI Chat',desc: 'Embedded AI assistant',          icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z' },
   { type: 'app',   label: 'App',    desc: 'App launcher with quick links',  icon: 'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z' },
+  { type: 'agent', label: 'Agent',  desc: 'AI agent with tools & actions',  icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+  { type: 'agent-manager', label: 'Agent Manager', desc: 'Create & manage your agents', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
 ];
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -260,6 +263,51 @@ function ContentPanel({ type, config, set }: { type: BlockType; config: BlockCon
           </div>
         </div>
       );
+
+    case 'agent-manager':
+      return (
+        <div className="bg-gray-700/30 rounded-lg p-3">
+          <p className="text-xs text-gray-400">The Agent Manager block lets you create and manage agents directly on your canvas. No additional configuration needed.</p>
+        </div>
+      );
+
+    case 'agent': {
+      const agents = getAgents();
+      return (
+        <div className="space-y-3">
+          <Field label="Agent">
+            <Select value={config.agentDefId ?? ''} onChange={v => set('agentDefId', v)}
+              options={[{ value: '', label: 'Choose an agent…' }, ...agents.map(a => ({ value: a.id, label: a.name }))]} />
+          </Field>
+          {agents.length === 0 && (
+            <div className="bg-gray-700/30 rounded-lg p-3">
+              <p className="text-xs text-gray-400">No agents created yet. Create one first, then assign it to this block.</p>
+            </div>
+          )}
+          {config.agentDefId && (() => {
+            const selected = agents.find(a => a.id === config.agentDefId);
+            if (!selected) return null;
+            return (
+              <div className="bg-gray-700/30 rounded-lg p-3 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className={`w-6 h-6 ${selected.color} rounded-lg flex items-center justify-center`}>
+                    <span className="text-white text-xs font-bold">{selected.initial}</span>
+                  </div>
+                  <p className="text-xs font-medium text-white">{selected.name}</p>
+                </div>
+                <p className="text-xs text-gray-400">{selected.description}</p>
+                {selected.targetUrl && <p className="text-xs text-gray-500">Target: {selected.targetUrl}</p>}
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {selected.capabilities.map(cap => (
+                    <span key={cap} className="text-xs bg-gray-600 text-gray-300 px-1.5 py-0.5 rounded">{cap}</span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      );
+    }
 
     default:
       return null;

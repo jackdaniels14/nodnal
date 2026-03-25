@@ -28,7 +28,9 @@ export type BlockType =
   | 'chart'
   | 'email'
   | 'ai'
-  | 'app';
+  | 'app'
+  | 'agent'
+  | 'agent-manager';
 
 // ─── Interaction Rules ────────────────────────────────────────────────────────
 
@@ -99,6 +101,18 @@ export interface BlockConfig {
   dataPath?: string;
   dataLabel?: string;
 
+  // --- agent block ---
+  agentDefId?: string;       // which AgentDef this block runs
+
+  // --- agent ownership (any block) ---
+  agentId?: string;          // which agent owns/created this block (exclusive)
+  linkedTo?: string[];       // block IDs this block feeds context to
+  dataSource?: {
+    agentId: string;
+    query: string;
+    refreshInterval?: number;
+  };
+
   // --- interaction rules ---
   expansionRule?: ExpansionRule;
   movementRule?: MovementRule;
@@ -143,6 +157,8 @@ export const BLOCK_DEFAULTS: Record<BlockType, { w: number; h: number; minW: num
   email: { w: 4, h: 5, minW: 3, minH: 4 },
   ai:    { w: 3, h: 5, minW: 2, minH: 3 },
   app:   { w: 3, h: 3, minW: 2, minH: 2 },
+  agent: { w: 4, h: 5, minW: 3, minH: 4 },
+  'agent-manager': { w: 5, h: 6, minW: 4, minH: 5 },
 };
 
 // ─── Starter Dashboard ────────────────────────────────────────────────────────
