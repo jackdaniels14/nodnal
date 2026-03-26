@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ content: 'ANTHROPIC_API_KEY not set in .env.local.' });
   }
 
-  const { agentId, messages, systemPrompt, linkedBlockIds } = await req.json();
+  const { agentId, messages, systemPrompt, linkedBlockIds, workspaceContext } = await req.json();
   const client = new Anthropic({ apiKey });
 
   // Build agent-scoped system prompt
@@ -169,10 +169,34 @@ export async function POST(req: NextRequest) {
       ? `Your linked blocks: ${linkedBlockIds.join(', ')}`
       : 'You have no linked blocks yet.',
     '',
-    'When you want to create, update, or remove blocks on the workspace, include a JSON block in your response wrapped in <block-actions> tags.',
-    'Format: <block-actions>[{"action":"spawn","blockType":"stat","title":"...","config":{...},"position":{"x":0,"y":0,"w":2,"h":2}},...]</block-actions>',
-    'Available block types: stat, text, table, chart, list, link',
-    'Only include <block-actions> when the user asks you to display data or create visual outputs.',
+    '## Workspace Context',
+    'You exist on a workspace canvas alongside other blocks. Here are the blocks currently visible:',
+    workspaceContext?.length
+      ? workspaceContext.map((b: { id: string; type: string; title: string; agentOwned: boolean }) =>
+          `- [${b.type}] "${b.title}" (id: ${b.id}${b.agentOwned ? ', yours' : ''})`
+        ).join('\n')
+      : '(no other blocks)',
+    '',
+    '## Block Actions',
+    'You can create, update, or remove blocks on the workspace to display data visually.',
+    'Include a JSON array in your response wrapped in <block-actions> tags.',
+    '',
+    'Actions:',
+    '- spawn: Create a new block. Required: blockType, title. Optional: config, position.',
+    '- update: Modify an existing block you own. Required: blockId. Optional: title, config.',
+    '- remove: Delete a block you own. Required: blockId.',
+    '',
+    'Format: <block-actions>[{"action":"spawn","blockType":"stat","title":"Revenue","config":{"statValue":"$12,500","statLabel":"This month"}},...]</block-actions>',
+    '',
+    'Block types and their config:',
+    '- stat: { statValue, statLabel, statUnit }',
+    '- text: { textContent }',
+    '- table: { tableHeaders: string[], tableRows: string[][] }',
+    '- chart: { chartType: "bar"|"line"|"pie", chartData: [{name,value},...], chartColor }',
+    '- list: { listItems: string[] }',
+    '',
+    'Use block actions when the user asks to display, visualize, or show data.',
+    'Always tell the user what you created so they know to look for it on the canvas.',
   ].join('\n');
 
   // Build message history

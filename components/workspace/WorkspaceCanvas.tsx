@@ -11,7 +11,9 @@ interface Layout {
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { Block, GridItem, WorkspaceState, BLOCK_DEFAULTS, buildStarterLayout, toGridId, fromGridId } from '@/lib/workspace-types';
+import { Block, BlockConfig, GridItem, WorkspaceState, BLOCK_DEFAULTS, buildStarterLayout, toGridId, fromGridId } from '@/lib/workspace-types';
+import { BlockAction } from '@/lib/agents/agent-types';
+import { addLinkedBlock, removeLinkedBlock, getAgent } from '@/lib/agents/agent-registry';
 import BlockRenderer from './BlockRenderer';
 import BlockEditor from './BlockEditor';
 import AiAssistant from './AiAssistant';
@@ -156,6 +158,87 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
     if (!target.closest('.react-grid-item')) openAddBlock();
   };
 
+  // ── Agent Block Actions ────────────────────────────────────────────────────
+  const handleBlockAction = useCallback((agentId: string, actions: BlockAction[]) => {
+    const agentDef = getAgent(agentId);
+
+    setWorkspace(prev => {
+      let blocks = [...prev.blocks];
+      let layout = [...prev.layout];
+
+      // Find the agent block position for relative spawning
+      const agentBlock = blocks.find(b => b.config.agentDefId === agentId);
+      const agentLayout = agentBlock ? layout.find(l => l.i === agentBlock.id) : null;
+
+      for (const action of actions) {
+        switch (action.action) {
+          case 'spawn': {
+            const id = `block-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+            const blockType = (action.blockType ?? 'text') as Block['type'];
+            const defaults = BLOCK_DEFAULTS[blockType] ?? { w: 3, h: 3, minW: 1, minH: 1 };
+
+            // Position near the agent block, or use provided position
+            const pos = action.position ?? {
+              x: agentLayout ? Math.min(agentLayout.x + agentLayout.w, 12 - defaults.w) : 0,
+              y: agentLayout ? agentLayout.y : (layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)),
+              w: defaults.w,
+              h: defaults.h,
+            };
+
+            const newBlock: Block = {
+              id,
+              type: blockType,
+              title: action.title ?? 'Agent Output',
+              config: {
+                ...(action.config as BlockConfig ?? {}),
+                agentId, // Mark as owned by this agent
+              },
+            };
+
+            blocks.push(newBlock);
+            layout.push({
+              i: id,
+              x: pos.x, y: pos.y,
+              w: pos.w ?? defaults.w, h: pos.h ?? defaults.h,
+              minW: defaults.minW, minH: defaults.minH,
+            });
+
+            // Track linked block in agent session
+            addLinkedBlock(agentId, id);
+            break;
+          }
+          case 'update': {
+            if (!action.blockId) break;
+            // Only allow updating blocks owned by this agent
+            const target = blocks.find(b => b.id === action.blockId && b.config.agentId === agentId);
+            if (!target) break;
+            blocks = blocks.map(b => {
+              if (b.id !== action.blockId) return b;
+              return {
+                ...b,
+                title: action.title ?? b.title,
+                config: { ...b.config, ...(action.config as BlockConfig ?? {}) },
+              };
+            });
+            break;
+          }
+          case 'remove': {
+            if (!action.blockId) break;
+            // Only allow removing blocks owned by this agent
+            const toRemove = blocks.find(b => b.id === action.blockId && b.config.agentId === agentId);
+            if (!toRemove) break;
+            blocks = blocks.filter(b => b.id !== action.blockId);
+            layout = layout.filter(l => l.i !== action.blockId);
+            removeLinkedBlock(agentId, action.blockId);
+            break;
+          }
+        }
+      }
+
+      return { blocks, layout };
+    });
+  }, [setWorkspace]);
+
   const loadStarter = () => {
     if (workspace.blocks.length > 0 && !confirm('Replace current layout with the starter dashboard?')) return;
     setWorkspace(buildStarterLayout());
@@ -248,6 +331,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
             const hasExpansion = block.config.expansionRule?.enabled;
             const hasMovement = block.config.movementRule?.enabled;
             const isExpanded = expandedBlocks.has(block.id);
+            const ownerAgent = block.config.agentId ? getAgent(block.config.agentId) : null;
 
             return (
               <div
@@ -255,6 +339,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
                 className={`bg-gray-800/90 backdrop-blur-sm border rounded-xl overflow-hidden flex flex-col transition-colors ${
                   editMode ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-gray-700/80 hover:border-gray-600'
                 } ${hasExpansion || hasMovement ? 'cursor-pointer' : ''}`}
+                style={ownerAgent && !editMode ? { borderLeftWidth: '3px', borderLeftColor: ownerAgent.color.replace('bg-', '').includes('emerald') ? '#10b981' : ownerAgent.color.replace('bg-', '').includes('violet') ? '#8b5cf6' : ownerAgent.color.replace('bg-', '').includes('blue') ? '#3b82f6' : ownerAgent.color.replace('bg-', '').includes('amber') ? '#f59e0b' : ownerAgent.color.replace('bg-', '').includes('rose') ? '#f43f5e' : ownerAgent.color.replace('bg-', '').includes('cyan') ? '#06b6d4' : ownerAgent.color.replace('bg-', '').includes('pink') ? '#ec4899' : ownerAgent.color.replace('bg-', '').includes('indigo') ? '#6366f1' : '#10b981' } : undefined}
                 onClick={e => handleBlockClick(block, e)}
                 onMouseEnter={() => handleBlockMouseEnter(block)}
                 onMouseLeave={() => handleBlockMouseLeave(block)}
@@ -268,6 +353,12 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
                       </svg>
                     )}
                     <p className="text-xs font-medium text-gray-500 truncate">{block.title}</p>
+                    {/* Agent ownership badge */}
+                    {ownerAgent && !editMode && (
+                      <span className={`w-4 h-4 ${ownerAgent.color} rounded flex items-center justify-center flex-shrink-0`} title={`Owned by ${ownerAgent.name}`}>
+                        <span className="text-white text-xs font-bold" style={{ fontSize: '8px' }}>{ownerAgent.initial}</span>
+                      </span>
+                    )}
                     {/* Grid ID badge — always in system, shown in edit mode */}
                     {editMode && (
                       <span className="text-xs text-gray-600 font-mono flex-shrink-0">{gridId}</span>
@@ -296,7 +387,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
 
                 {/* Content */}
                 <div className="flex-1 p-3 overflow-hidden min-h-0">
-                  <BlockRenderer block={block} />
+                  <BlockRenderer block={block} onBlockAction={handleBlockAction} workspaceBlocks={workspace.blocks} />
                 </div>
               </div>
             );

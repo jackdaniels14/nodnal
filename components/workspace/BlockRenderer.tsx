@@ -117,7 +117,15 @@ function AiChat({ block }: { block: Block }) {
 
 // ─── Main Renderer ────────────────────────────────────────────────────────────
 
-export default function BlockRenderer({ block }: { block: Block }) {
+import { BlockAction } from '@/lib/agents/agent-types';
+
+interface RendererProps {
+  block: Block;
+  onBlockAction?: (agentId: string, actions: BlockAction[]) => void;
+  workspaceBlocks?: Block[];
+}
+
+export default function BlockRenderer({ block, onBlockAction, workspaceBlocks }: RendererProps) {
   const { type, config } = block;
 
   switch (type) {
@@ -349,7 +357,7 @@ export default function BlockRenderer({ block }: { block: Block }) {
 
     // ── Agent Block ──────────────────────────────────────────────────────────
     case 'agent':
-      return <AgentChat block={block} />;
+      return <AgentChat block={block} onBlockAction={onBlockAction} workspaceBlocks={workspaceBlocks} />;
 
     // ── Agent Manager ─────────────────────────────────────────────────────
     case 'agent-manager':

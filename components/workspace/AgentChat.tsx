@@ -10,9 +10,10 @@ import { getSession, updateSession } from '@/lib/agents/agent-registry';
 interface Props {
   block: Block;
   onBlockAction?: (agentId: string, actions: BlockAction[]) => void;
+  workspaceBlocks?: Block[];
 }
 
-export default function AgentChat({ block, onBlockAction }: Props) {
+export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Props) {
   const { config } = block;
   const agentDefId = config.agentDefId;
 
@@ -56,6 +57,11 @@ export default function AgentChat({ block, onBlockAction }: Props) {
     setLoading(true);
 
     try {
+      // Build workspace context — only blocks owned by this agent or unowned
+      const contextBlocks = (workspaceBlocks ?? [])
+        .filter(b => b.id !== block.id && (b.config.agentId === agent.id || !b.config.agentId))
+        .map(b => ({ id: b.id, type: b.type, title: b.title, agentOwned: b.config.agentId === agent.id }));
+
       const res = await fetch('/api/agents/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -64,6 +70,7 @@ export default function AgentChat({ block, onBlockAction }: Props) {
           messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
           systemPrompt: agent.systemPrompt,
           linkedBlockIds: session.linkedBlockIds,
+          workspaceContext: contextBlocks,
         }),
       });
 
