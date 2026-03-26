@@ -211,6 +211,7 @@ export async function POST(req: NextRequest) {
   let finalText = '';
   let blockActions: unknown[] = [];
 
+  try {
   for (let i = 0; i < 10; i++) {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -268,4 +269,16 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ agentId, content, blockActions });
+
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    // Surface real API errors to the user
+    if (errMsg.includes('credit balance')) {
+      return NextResponse.json({ agentId, content: 'Your Anthropic account has no credits. Go to console.anthropic.com/settings/billing to add credits.', blockActions: [] });
+    }
+    if (errMsg.includes('invalid_api_key') || errMsg.includes('authentication')) {
+      return NextResponse.json({ agentId, content: 'Invalid Anthropic API key. Check your .env.local file.', blockActions: [] });
+    }
+    return NextResponse.json({ agentId, content: `API error: ${errMsg}`, blockActions: [] });
+  }
 }
