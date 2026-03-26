@@ -11,5 +11,3 @@ runConfig:
 env:
   - variable: ANTHROPIC_API_KEY
     secret: anthropic-api-key
-    availability:
-      - RUNTIME
