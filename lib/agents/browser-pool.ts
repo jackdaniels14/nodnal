@@ -1,21 +1,23 @@
-import { chromium, Browser, BrowserContext, Page } from 'playwright';
-
 // ─── Browser Session Pool ────────────────────────────────────────────────────
 // Each agent gets its own isolated browser context (separate cookies, storage).
 // Contexts are keyed by agentId — no cross-agent access.
+// Playwright is loaded dynamically to avoid build failures in environments
+// where browser binaries aren't available (e.g. Firebase App Hosting).
 
-const contexts = new Map<string, BrowserContext>();
-const pages = new Map<string, Page>();
-let browser: Browser | null = null;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const contexts = new Map<string, any>();
+const pages = new Map<string, any>();
+let browser: any = null;
 
-async function getBrowser(): Promise<Browser> {
+async function getBrowser() {
   if (!browser || !browser.isConnected()) {
+    const { chromium } = await import('playwright');
     browser = await chromium.launch({ headless: true });
   }
   return browser;
 }
 
-export async function getPage(agentId: string): Promise<Page> {
+export async function getPage(agentId: string) {
   // Return existing page if still open
   const existing = pages.get(agentId);
   if (existing && !existing.isClosed()) return existing;
@@ -23,7 +25,7 @@ export async function getPage(agentId: string): Promise<Page> {
   // Create isolated context for this agent
   const b = await getBrowser();
   let ctx = contexts.get(agentId);
-  if (!ctx || !ctx.pages) {
+  if (!ctx) {
     ctx = await b.newContext({
       viewport: { width: 1280, height: 800 },
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -99,7 +101,7 @@ export async function click(agentId: string, selector: string): Promise<{ succes
   const page = await getPage(agentId);
   try {
     await page.click(selector, { timeout: 5000 });
-    await page.waitForTimeout(500); // brief wait for page reaction
+    await page.waitForTimeout(500);
     return { success: true };
   } catch (e) {
     return { success: false, error: String(e) };
