@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Block, BlockType, BlockConfig, ExpansionRule, MovementRule } from '@/lib/workspace-types';
+import { Block, BlockType, BlockConfig, ExpansionRule, MovementRule, fromGridId, toGridId } from '@/lib/workspace-types';
 import { APP_REGISTRY } from '@/lib/app-registry';
 import { getAgents } from '@/lib/agents/agent-registry';
 
@@ -351,6 +351,8 @@ function ContentPanel({ type, config, set }: { type: BlockType; config: BlockCon
 
 // ─── Interactions Panel ───────────────────────────────────────────────────────
 
+import VisualPlacementEditor from './VisualPlacementEditor';
+
 function InteractionsPanel({
   config, set, currentW, currentH,
 }: {
@@ -397,31 +399,27 @@ function InteractionsPanel({
           </button>
         </div>
         {exp?.enabled && (
-          <div className="space-y-3 pt-2 border-t border-gray-700">
+          <div className="space-y-4 pt-2 border-t border-gray-700">
             <Field label="Trigger">
               <Select value={exp.trigger} onChange={v => setExp({ trigger: v as 'click' | 'hover' })}
                 options={[{ value: 'click', label: 'Click' }, { value: 'hover', label: 'Hover' }]} />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-gray-400 mb-1.5">Collapsed size</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="W"><NumberInput value={exp.collapsedW} onChange={v => setExp({ collapsedW: v })} min={1} max={12} /></Field>
-                  <Field label="H"><NumberInput value={exp.collapsedH} onChange={v => setExp({ collapsedH: v })} min={1} /></Field>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 mb-1.5">Expanded size</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="W"><NumberInput value={exp.expandedW} onChange={v => setExp({ expandedW: v })} min={1} max={12} /></Field>
-                  <Field label="H"><NumberInput value={exp.expandedH} onChange={v => setExp({ expandedH: v })} min={1} /></Field>
-                </div>
-              </div>
-            </div>
+            <VisualPlacementEditor
+              label="Collapsed (Start)"
+              hint="Drag to set starting position and size"
+              value={{ x: 0, y: 0, w: exp.collapsedW, h: exp.collapsedH }}
+              onChange={r => setExp({ collapsedW: r.w, collapsedH: r.h })}
+            />
+            <VisualPlacementEditor
+              label="Expanded (End)"
+              hint="Drag to set expanded position and size"
+              value={{ x: 0, y: 0, w: exp.expandedW, h: exp.expandedH }}
+              onChange={r => setExp({ expandedW: r.w, expandedH: r.h })}
+            />
             <div className="flex items-center gap-2">
               <input type="checkbox" id="hard-expand" checked={!!exp.hard} onChange={e => setExp({ hard: e.target.checked })}
                 className="rounded border-gray-600 bg-gray-700 text-emerald-500 focus:ring-emerald-500" />
-              <label htmlFor="hard-expand" className="text-xs text-gray-300">Hard set (snap exactly to size, no flex)</label>
+              <label htmlFor="hard-expand" className="text-xs text-gray-300">Snap exactly to size</label>
             </div>
           </div>
         )}
@@ -440,14 +438,22 @@ function InteractionsPanel({
           </button>
         </div>
         {mov?.enabled && (
-          <div className="space-y-3 pt-2 border-t border-gray-700">
+          <div className="space-y-4 pt-2 border-t border-gray-700">
             <Field label="Trigger">
               <Select value={mov.trigger} onChange={v => setMov({ trigger: v as 'click' | 'hover' })}
                 options={[{ value: 'click', label: 'Click' }, { value: 'hover', label: 'Hover' }]} />
             </Field>
-            <Field label="Target Grid Position" hint="Column letter (a–l) + row number. e.g. d5, a1, l12">
-              <Input value={mov.targetGridId} onChange={v => setMov({ targetGridId: v.toLowerCase() })} placeholder="e.g. d5" />
-            </Field>
+            <VisualPlacementEditor
+              label="Target Position"
+              hint="Click or drag to set where the block moves to"
+              value={{
+                x: (() => { const p = fromGridId(mov.targetGridId); return p?.x ?? 0; })(),
+                y: (() => { const p = fromGridId(mov.targetGridId); return p?.y ?? 0; })(),
+                w: currentW,
+                h: currentH,
+              }}
+              onChange={r => setMov({ targetGridId: toGridId(r.x, r.y) })}
+            />
             <div className="flex items-center gap-2">
               <input type="checkbox" id="return-on-release" checked={!!mov.returnOnRelease} onChange={e => setMov({ returnOnRelease: e.target.checked })}
                 className="rounded border-gray-600 bg-gray-700 text-emerald-500 focus:ring-emerald-500" />
