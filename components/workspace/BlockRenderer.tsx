@@ -264,6 +264,61 @@ function InlineList({ block, onBlockUpdate }: { block: Block; onBlockUpdate?: Re
   );
 }
 
+// ─── Group Block ─────────────────────────────────────────────────────────────
+
+function GroupBlock({ block, onBlockUpdate, workspaceBlocks }: { block: Block; onBlockUpdate?: RendererProps['onBlockUpdate']; workspaceBlocks?: Block[] }) {
+  const { config } = block;
+  const isExpanded = config.groupExpanded !== false; // expanded by default
+  const childIds = config.groupChildIds ?? [];
+  const collapsedChildIds = config.groupCollapsedChildIds ?? [];
+  const allBlocks = workspaceBlocks ?? [];
+
+  const visibleIds = isExpanded ? childIds : collapsedChildIds;
+  const visibleChildren = visibleIds.map(id => allBlocks.find(b => b.id === id)).filter(Boolean) as Block[];
+
+  const toggleExpand = () => {
+    if (onBlockUpdate) onBlockUpdate(block.id, { groupExpanded: !isExpanded });
+  };
+
+  return (
+    <div className="flex flex-col h-full gap-2">
+      {/* Group header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button onClick={toggleExpand} className="p-0.5 text-gray-400 hover:text-white transition-colors">
+            <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <span className="text-xs text-gray-400">
+            {childIds.length} block{childIds.length !== 1 ? 's' : ''} {isExpanded ? '' : `(${collapsedChildIds.length} shown)`}
+          </span>
+        </div>
+      </div>
+
+      {/* Children */}
+      <div className="flex-1 overflow-auto">
+        {visibleChildren.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-xs text-gray-500">
+            {childIds.length === 0 ? 'No blocks in group. Edit to add blocks.' : 'No blocks shown when collapsed.'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2">
+            {visibleChildren.map(child => (
+              <div key={child.id} className="bg-gray-700/30 border border-gray-600/30 rounded-lg p-2">
+                <p className="text-xs text-gray-500 mb-1">{child.title}</p>
+                <div className="text-xs">
+                  <BlockRenderer block={child} onBlockUpdate={onBlockUpdate} workspaceBlocks={workspaceBlocks} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Renderer ────────────────────────────────────────────────────────────
 
 import { BlockAction } from '@/lib/agents/agent-types';
@@ -481,6 +536,10 @@ export default function BlockRenderer({ block, onBlockAction, onBlockUpdate, wor
         </div>
       );
     }
+
+    // ── Group Block ─────────────────────────────────────────────────────────
+    case 'group':
+      return <GroupBlock block={block} onBlockUpdate={onBlockUpdate} workspaceBlocks={workspaceBlocks} />;
 
     // ── Agent Block ──────────────────────────────────────────────────────────
     case 'agent':

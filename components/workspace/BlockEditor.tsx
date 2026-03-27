@@ -18,6 +18,7 @@ const BLOCK_TYPES: { type: BlockType; label: string; desc: string; icon: string 
   { type: 'app',   label: 'App',    desc: 'App launcher with quick links',  icon: 'M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z' },
   { type: 'agent', label: 'Agent',  desc: 'AI agent with tools & actions',  icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
   { type: 'agent-manager', label: 'Agent Manager', desc: 'Create & manage your agents', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+  { type: 'group', label: 'Group', desc: 'Container for organizing blocks', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
 ];
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -263,6 +264,40 @@ function ContentPanel({ type, config, set }: { type: BlockType; config: BlockCon
           </div>
         </div>
       );
+
+    case 'group': {
+      // For now we need workspace blocks passed via a prop or from context
+      // We'll use a simple text input for block IDs
+      const childIds = config.groupChildIds ?? [];
+      const collapsedIds = config.groupCollapsedChildIds ?? [];
+      return (
+        <div className="space-y-3">
+          <div className="bg-gray-700/30 rounded-lg p-3">
+            <p className="text-xs text-gray-400 mb-2">Add block IDs to include in this group. You can find block IDs in the block header when hovering.</p>
+          </div>
+          <Field label="Child Block IDs (comma separated)">
+            <Input
+              value={childIds.join(', ')}
+              onChange={v => set('groupChildIds', v.split(',').map(s => s.trim()).filter(Boolean))}
+              placeholder="block-123, block-456"
+            />
+          </Field>
+          <Field label="Show when collapsed (comma separated IDs)" hint="Leave empty to show none when collapsed">
+            <Input
+              value={collapsedIds.join(', ')}
+              onChange={v => set('groupCollapsedChildIds', v.split(',').map(s => s.trim()).filter(Boolean))}
+              placeholder="block-123"
+            />
+          </Field>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="group-expanded" checked={config.groupExpanded !== false}
+              onChange={e => set('groupExpanded', e.target.checked)}
+              className="rounded border-gray-600 bg-gray-700 text-emerald-500 focus:ring-emerald-500" />
+            <label htmlFor="group-expanded" className="text-xs text-gray-300">Start expanded</label>
+          </div>
+        </div>
+      );
+    }
 
     case 'agent-manager':
       return (

@@ -8,7 +8,7 @@ import { WorkspaceState } from '@/lib/workspace-types';
 export default function DashboardPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  const { activeWorkspace, updateWorkspaceState } = useWorkspace();
+  const { activeWorkspace, activePage, updateWorkspaceState, updatePageState } = useWorkspace();
 
   useEffect(() => {
     const measure = () => {
@@ -20,19 +20,31 @@ export default function DashboardPage() {
     return () => ro.disconnect();
   }, []);
 
-  // Sync workspace state changes back to the store
+  // Determine which state to show — dashboard or custom page
+  const currentState = activePage?.state ?? activeWorkspace.state;
+  const storageKey = activePage
+    ? `workspace-${activeWorkspace.id}-page-${activePage.id}`
+    : `workspace-${activeWorkspace.id}`;
+
   const handleStateChange = useCallback((state: WorkspaceState) => {
-    updateWorkspaceState(activeWorkspace.id, state);
-  }, [activeWorkspace.id, updateWorkspaceState]);
+    if (activePage) {
+      updatePageState(activeWorkspace.id, activePage.id, state);
+    } else {
+      updateWorkspaceState(activeWorkspace.id, state);
+    }
+  }, [activeWorkspace.id, activePage, updateWorkspaceState, updatePageState]);
+
+  // Key changes when switching pages to force remount
+  const canvasKey = activePage ? `${activeWorkspace.id}-${activePage.id}` : activeWorkspace.id;
 
   return (
     <div ref={containerRef} className="w-full h-full">
       {width > 0 && (
         <WorkspaceCanvas
-          key={activeWorkspace.id}
+          key={canvasKey}
           width={width}
-          storageKey={`workspace-${activeWorkspace.id}`}
-          initialState={activeWorkspace.state}
+          storageKey={storageKey}
+          initialState={currentState}
           onStateChange={handleStateChange}
         />
       )}

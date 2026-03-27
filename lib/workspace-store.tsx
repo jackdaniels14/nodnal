@@ -5,11 +5,19 @@ import { WorkspaceState } from './workspace-types';
 
 // ─── Data Model ──────────────────────────────────────────────────────────────
 
+export interface WorkspacePage {
+  id: string;
+  name: string;
+  state: WorkspaceState;
+}
+
 export interface Workspace {
   id: string;
   name: string;
   createdAt: number;
-  state: WorkspaceState;
+  state: WorkspaceState; // dashboard (default page)
+  pages: WorkspacePage[]; // additional custom pages
+  activePageId?: string; // null/undefined = dashboard
 }
 
 export interface AppState {
@@ -32,6 +40,7 @@ function defaultAppState(): AppState {
         name: 'Main Workspace',
         createdAt: Date.now(),
         state: { blocks: [], layout: [] },
+        pages: [],
       },
     ],
     activeWorkspaceId: defaultId,
@@ -63,6 +72,7 @@ function migrateOldData(): AppState | null {
           name: 'Dashboard',
           createdAt: Date.now() - 1000,
           state,
+          pages: [],
         });
       }
     } catch { /* skip */ }
@@ -77,6 +87,7 @@ function migrateOldData(): AppState | null {
           name: 'Workspace',
           createdAt: Date.now(),
           state,
+          pages: [],
         });
       }
     } catch { /* skip */ }
@@ -95,11 +106,17 @@ function migrateOldData(): AppState | null {
 interface WorkspaceContextValue {
   appState: AppState;
   activeWorkspace: Workspace;
+  activePage: WorkspacePage | null; // null = dashboard
   setActiveWorkspace: (id: string) => void;
+  setActivePage: (workspaceId: string, pageId: string | null) => void;
   createWorkspace: (name: string) => string;
   renameWorkspace: (id: string, name: string) => void;
   deleteWorkspace: (id: string) => void;
   updateWorkspaceState: (id: string, state: WorkspaceState) => void;
+  addPage: (workspaceId: string, name: string) => string;
+  renamePage: (workspaceId: string, pageId: string, name: string) => void;
+  deletePage: (workspaceId: string, pageId: string) => void;
+  updatePageState: (workspaceId: string, pageId: string, state: WorkspaceState) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -158,6 +175,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       name,
       createdAt: Date.now(),
       state: { blocks: [], layout: [] },
+      pages: [],
     };
     setAppState(prev => ({
       workspaces: [...prev.workspaces, ws],
@@ -191,15 +209,76 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const setActivePage = useCallback((workspaceId: string, pageId: string | null) => {
+    setAppState(prev => ({
+      ...prev,
+      workspaces: prev.workspaces.map(w => w.id === workspaceId ? { ...w, activePageId: pageId ?? undefined } : w),
+    }));
+  }, []);
+
+  const addPage = useCallback((workspaceId: string, name: string): string => {
+    const pageId = `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const page: WorkspacePage = { id: pageId, name, state: { blocks: [], layout: [] } };
+    setAppState(prev => ({
+      ...prev,
+      workspaces: prev.workspaces.map(w => w.id === workspaceId
+        ? { ...w, pages: [...(w.pages ?? []), page], activePageId: pageId }
+        : w
+      ),
+    }));
+    return pageId;
+  }, []);
+
+  const renamePage = useCallback((workspaceId: string, pageId: string, name: string) => {
+    setAppState(prev => ({
+      ...prev,
+      workspaces: prev.workspaces.map(w => w.id === workspaceId
+        ? { ...w, pages: (w.pages ?? []).map(p => p.id === pageId ? { ...p, name } : p) }
+        : w
+      ),
+    }));
+  }, []);
+
+  const deletePage = useCallback((workspaceId: string, pageId: string) => {
+    setAppState(prev => ({
+      ...prev,
+      workspaces: prev.workspaces.map(w => {
+        if (w.id !== workspaceId) return w;
+        const remaining = (w.pages ?? []).filter(p => p.id !== pageId);
+        return { ...w, pages: remaining, activePageId: w.activePageId === pageId ? undefined : w.activePageId };
+      }),
+    }));
+  }, []);
+
+  const updatePageState = useCallback((workspaceId: string, pageId: string, state: WorkspaceState) => {
+    setAppState(prev => ({
+      ...prev,
+      workspaces: prev.workspaces.map(w => w.id === workspaceId
+        ? { ...w, pages: (w.pages ?? []).map(p => p.id === pageId ? { ...p, state } : p) }
+        : w
+      ),
+    }));
+  }, []);
+
+  const activePage = activeWorkspace.activePageId
+    ? (activeWorkspace.pages ?? []).find(p => p.id === activeWorkspace.activePageId) ?? null
+    : null;
+
   return (
     <WorkspaceContext.Provider value={{
       appState,
       activeWorkspace,
+      activePage,
       setActiveWorkspace,
+      setActivePage,
       createWorkspace,
       renameWorkspace,
       deleteWorkspace,
       updateWorkspaceState,
+      addPage,
+      renamePage,
+      deletePage,
+      updatePageState,
     }}>
       {children}
     </WorkspaceContext.Provider>
