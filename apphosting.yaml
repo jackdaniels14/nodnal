@@ -11,3 +11,5 @@ env:
     secret: anthropic-api-key
   - variable: NEXT_PUBLIC_AZURE_CLIENT_ID
     secret: azure-client-id
+  - variable: BROWSERLESS_API_KEY
+    secret: browserless-api-key

@@ -12,7 +12,14 @@ let browser: any = null;
 async function getBrowser() {
   if (!browser || !browser.isConnected()) {
     const { chromium } = await import('playwright');
-    browser = await chromium.launch({ headless: true });
+    const browserlessKey = process.env.BROWSERLESS_API_KEY?.trim();
+    if (browserlessKey) {
+      // Connect to cloud browser (works on Firebase/Cloud Run)
+      browser = await chromium.connect(`wss://chrome.browserless.io?token=${browserlessKey}`);
+    } else {
+      // Local browser (works on localhost)
+      browser = await chromium.launch({ headless: true });
+    }
   }
   return browser;
 }
