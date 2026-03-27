@@ -335,6 +335,20 @@ function InteractionsPanel({
 
   return (
     <div className="space-y-5">
+      {/* Overlap */}
+      <div className="bg-gray-700/30 rounded-xl p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-white">Allow Overlap</p>
+            <p className="text-xs text-gray-500 mt-0.5">Block can overlap other blocks on the canvas</p>
+          </div>
+          <button onClick={() => set('allowOverlap', !config.allowOverlap)}
+            className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors ${config.allowOverlap ? 'bg-emerald-500' : 'bg-gray-600'}`}>
+            <span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${config.allowOverlap ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+      </div>
+
       {/* Expansion */}
       <div className="bg-gray-700/30 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">

@@ -117,6 +117,8 @@ export interface BlockConfig {
   // --- interaction rules ---
   expansionRule?: ExpansionRule;
   movementRule?: MovementRule;
+  allowOverlap?: boolean;
+  positionLocked?: boolean;
 }
 
 // ─── Block ────────────────────────────────────────────────────────────────────

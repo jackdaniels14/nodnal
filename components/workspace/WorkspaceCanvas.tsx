@@ -55,8 +55,24 @@ function useLocalStorage<T>(key: string, initial: T) {
   return [state, set] as const;
 }
 
-export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace' }: { width: number; storageKey?: string }) {
-  const [workspace, setWorkspace] = useLocalStorage<WorkspaceState>(storageKey, { blocks: [], layout: [] });
+interface CanvasProps {
+  width: number;
+  storageKey?: string;
+  initialState?: WorkspaceState;
+  onStateChange?: (state: WorkspaceState) => void;
+}
+
+export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace', initialState, onStateChange }: CanvasProps) {
+  const [workspace, setWorkspaceRaw] = useLocalStorage<WorkspaceState>(storageKey, initialState ?? { blocks: [], layout: [] });
+
+  // Wrap setWorkspace to also notify parent of state changes
+  const setWorkspace = useCallback((val: WorkspaceState | ((prev: WorkspaceState) => WorkspaceState)) => {
+    setWorkspaceRaw(prev => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      if (onStateChange) onStateChange(next);
+      return next;
+    });
+  }, [setWorkspaceRaw, onStateChange]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingBlock, setEditingBlock] = useState<Block | undefined>(undefined);
   // Track expanded blocks (for expansion rules)
@@ -69,7 +85,10 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
 
   // z-order: last item in array = on top
   const zOrder = workspace.zOrder ?? [];
-  const allowOverlap = workspace.allowOverlap ?? false;
+  // Check if any block has overlap enabled
+  const hasAnyOverlap = workspace.blocks.some(b => b.config.allowOverlap);
+  // Global unlock toggle — temporarily unlocks all locked blocks
+  const [globalUnlock, setGlobalUnlock] = useState(false);
 
   const bringToFront = useCallback((blockId: string) => {
     setWorkspace(prev => ({
@@ -95,13 +114,23 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
   };
 
   const deleteBlock = (id: string) => {
+    const block = workspace.blocks.find(b => b.id === id);
+    if (!confirm(`Delete "${block?.title || 'this block'}"? This cannot be undone.`)) return;
     setWorkspace(prev => ({
+      ...prev,
       blocks: prev.blocks.filter(b => b.id !== id),
       layout: prev.layout.filter(l => l.i !== id),
       zOrder: (prev.zOrder ?? []).filter(z => z !== id),
     }));
     setExpandedBlocks(prev => { const n = new Set(prev); n.delete(id); return n; });
     setMovedBlocks(prev => { const n = new Map(prev); n.delete(id); return n; });
+  };
+
+  const toggleBlockLock = (id: string) => {
+    setWorkspace(prev => ({
+      ...prev,
+      blocks: prev.blocks.map(b => b.id === id ? { ...b, config: { ...b.config, positionLocked: !b.config.positionLocked } } : b),
+    }));
   };
 
   const handleBlockUpdate = useCallback((blockId: string, updates: Partial<BlockConfig>) => {
@@ -272,16 +301,16 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
     setWorkspace(buildStarterLayout());
   };
 
-  const toggleOverlap = () => {
-    setWorkspace(prev => ({ ...prev, allowOverlap: !prev.allowOverlap }));
-  };
-
-  const gridLayout: Layout[] = workspace.layout.map(l => ({
-    i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
-    minW: l.minW ?? 1, minH: l.minH ?? 1,
-    isDraggable: true,
-    isResizable: true,
-  }));
+  const gridLayout: Layout[] = workspace.layout.map(l => {
+    const block = workspace.blocks.find(b => b.id === l.i);
+    const isLocked = block?.config.positionLocked && !globalUnlock;
+    return {
+      i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
+      minW: 1, minH: 1,
+      isDraggable: !isLocked,
+      isResizable: !isLocked,
+    };
+  });
 
   return (
     <div className="flex flex-col gap-3" onTouchEnd={handleTouchClearAll}>
@@ -289,18 +318,24 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
       <div className="flex items-center gap-2 flex-wrap">
         <AiAssistant workspace={workspace} onApply={setWorkspace} />
 
+        {/* Unlock all toggle */}
         <button
-          onClick={toggleOverlap}
+          onClick={() => setGlobalUnlock(u => !u)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-            allowOverlap
-              ? 'bg-violet-500/20 text-violet-400 border-violet-500/40'
+            globalUnlock
+              ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
               : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200 hover:border-gray-500'
           }`}
+          title={globalUnlock ? 'Re-lock all blocks' : 'Unlock all blocks for moving'}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+            {globalUnlock ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            )}
           </svg>
-          {allowOverlap ? 'Overlap On' : 'Overlap Off'}
+          {globalUnlock ? 'Unlocked' : 'Locked'}
         </button>
 
         {workspace.blocks.length === 0 && (
@@ -351,9 +386,8 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
           onLayoutChange={onLayoutChange}
           isDraggable={true}
           isResizable={true}
-          draggableHandle=".block-drag-handle"
           resizeHandles={['se', 'sw', 'ne', 'nw', 'e', 'w', 'n', 's']}
-          preventCollision={!allowOverlap}
+          preventCollision={!hasAnyOverlap}
           margin={[12, 12]}
           containerPadding={[12, 12]}
         >
@@ -384,7 +418,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
                 onTouchEnd={handleTouchEnd}
               >
                 {/* Block header */}
-                <div className="block-drag-handle flex items-center justify-between px-3 py-1.5 border-b border-gray-700/60 flex-shrink-0 cursor-grab active:cursor-grabbing">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700/60 flex-shrink-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <svg className="w-3 h-3 text-gray-600 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M8 6a2 2 0 100-4 2 2 0 000 4zM8 14a2 2 0 100-4 2 2 0 000 4zM8 22a2 2 0 100-4 2 2 0 000 4zM16 6a2 2 0 100-4 2 2 0 000 4zM16 14a2 2 0 100-4 2 2 0 000 4zM16 22a2 2 0 100-4 2 2 0 000 4z" />
@@ -407,6 +441,15 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
                     )}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    <button onClick={e => { e.stopPropagation(); toggleBlockLock(block.id); }} className={`p-1 rounded transition-colors ${block.config.positionLocked ? 'text-amber-400' : 'text-gray-600 hover:text-gray-200'}`} title={block.config.positionLocked ? 'Unlock position' : 'Lock position'}>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {block.config.positionLocked ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        ) : (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                        )}
+                      </svg>
+                    </button>
                     <button onClick={e => { e.stopPropagation(); openEditBlock(block); }} className="p-1 text-gray-600 hover:text-gray-200 rounded transition-colors" title="Edit">
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                     </button>
@@ -416,8 +459,12 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
                   </div>
                 </div>
 
-                {/* Content */}
-                <div className="flex-1 p-3 overflow-hidden min-h-0">
+                {/* Content — stop drag propagation so block content is interactive */}
+                <div
+                  className="flex-1 p-3 overflow-hidden min-h-0"
+                  onMouseDown={e => e.stopPropagation()}
+                  onTouchStart={e => e.stopPropagation()}
+                >
                   <BlockRenderer block={block} onBlockAction={handleBlockAction} onBlockUpdate={handleBlockUpdate} workspaceBlocks={workspace.blocks} />
                 </div>
               </div>
