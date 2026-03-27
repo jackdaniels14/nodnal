@@ -151,14 +151,25 @@ export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Pro
           </div>
         )}
         {messages.map(m => (
-          <div key={m.id} className={`text-xs rounded-lg px-2.5 py-1.5 max-w-[90%] ${
+          <div key={m.id} className={`group/msg relative text-xs rounded-lg px-2.5 py-1.5 max-w-[90%] select-text ${
             m.role === 'user'
               ? 'bg-emerald-600/30 text-emerald-100 ml-auto'
               : m.role === 'system'
               ? 'bg-gray-600/30 text-gray-400 italic'
               : 'bg-gray-700 text-gray-200'
           }`}>
-            <span className="whitespace-pre-wrap">{m.content}</span>
+            <span className="whitespace-pre-wrap select-text cursor-text">{m.content}</span>
+            {m.role === 'assistant' && m.content && (
+              <button
+                onClick={() => navigator.clipboard.writeText(m.content)}
+                className="absolute top-1 right-1 p-1 rounded bg-gray-600/50 hover:bg-gray-500/50 text-gray-400 hover:text-white opacity-0 group-hover/msg:opacity-100 transition-opacity"
+                title="Copy"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            )}
             {m.blockActions && m.blockActions.length > 0 && (
               <div className="mt-1.5 pt-1.5 border-t border-gray-600/50">
                 <p className="text-xs text-gray-400">
