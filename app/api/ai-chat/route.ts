@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json({ content: 'ANTHROPIC_API_KEY not set in .env.local.' });
   }
@@ -10,16 +10,21 @@ export async function POST(req: NextRequest) {
   const { messages, systemPrompt } = await req.json();
   const client = new Anthropic({ apiKey });
 
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
-    system: systemPrompt || 'You are a helpful assistant.',
-    messages: messages.map((m: { role: string; content: string }) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    })),
-  });
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt || 'You are a helpful assistant.',
+      messages: messages.map((m: { role: string; content: string }) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    });
 
-  const content = response.content[0].type === 'text' ? response.content[0].text : '';
-  return NextResponse.json({ content });
+    const content = response.content[0].type === 'text' ? response.content[0].text : '';
+    return NextResponse.json({ content });
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ content: `API error: ${errMsg}` });
+  }
 }

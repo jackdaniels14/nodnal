@@ -150,7 +150,7 @@ async function executeBrowserTool(
 // ─── Main Agent Chat Handler ─────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json({ content: 'ANTHROPIC_API_KEY not set in .env.local.' });
   }
