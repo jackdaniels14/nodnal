@@ -120,6 +120,15 @@ export interface BlockConfig {
     refreshInterval?: number;
   };
 
+  // --- style ---
+  style?: {
+    bgColor?: string;
+    borderColor?: string;
+    textColor?: string;
+    headerColor?: string;
+    opacity?: number;
+  };
+
   // --- interaction rules ---
   expansionRule?: ExpansionRule;
   movementRule?: MovementRule;

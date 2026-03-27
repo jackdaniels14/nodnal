@@ -400,15 +400,20 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
             const ownerAgent = block.config.agentId ? getAgent(block.config.agentId) : null;
             const blockZIndex = zOrder.indexOf(block.id) + 1;
             const isTouchDragging = touchDragBlockId === block.id;
+            const blockStyle = block.config.style;
 
             return (
               <div
                 key={block.id}
-                className={`bg-gray-800/90 backdrop-blur-sm border rounded-xl overflow-hidden flex flex-col transition-colors ${
-                  'border-gray-700/80 hover:border-gray-600'
-                } ${hasExpansion || hasMovement ? 'cursor-pointer' : ''} ${isTouchDragging ? 'block-wiggle ring-2 ring-emerald-500/50' : ''}`}
+                className={`backdrop-blur-sm border rounded-xl overflow-hidden flex flex-col transition-colors ${
+                  !blockStyle?.borderColor ? 'border-gray-700/80 hover:border-gray-600' : ''
+                } ${!blockStyle?.bgColor ? 'bg-gray-800/90' : ''} ${hasExpansion || hasMovement ? 'cursor-pointer' : ''} ${isTouchDragging ? 'block-wiggle ring-2 ring-emerald-500/50' : ''}`}
                 style={{
                   zIndex: blockZIndex || 'auto',
+                  ...(blockStyle?.bgColor ? { backgroundColor: blockStyle.bgColor } : {}),
+                  ...(blockStyle?.borderColor ? { borderColor: blockStyle.borderColor } : {}),
+                  ...(blockStyle?.textColor ? { color: blockStyle.textColor } : {}),
+                  ...(blockStyle?.opacity != null ? { opacity: blockStyle.opacity } : {}),
                   ...(ownerAgent ? { borderLeftWidth: '3px', borderLeftColor: getAgentBorderColor(ownerAgent.color) } : {}),
                 }}
                 onClick={e => handleBlockClick(block, e)}
@@ -418,7 +423,8 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
                 onTouchEnd={handleTouchEnd}
               >
                 {/* Block header */}
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700/60 flex-shrink-0">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700/60 flex-shrink-0"
+                  style={blockStyle?.headerColor ? { backgroundColor: blockStyle.headerColor } : undefined}>
                   <div className="flex items-center gap-2 min-w-0">
                     <svg className="w-3 h-3 text-gray-600 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M8 6a2 2 0 100-4 2 2 0 000 4zM8 14a2 2 0 100-4 2 2 0 000 4zM8 22a2 2 0 100-4 2 2 0 000 4zM16 6a2 2 0 100-4 2 2 0 000 4zM16 14a2 2 0 100-4 2 2 0 000 4zM16 22a2 2 0 100-4 2 2 0 000 4z" />

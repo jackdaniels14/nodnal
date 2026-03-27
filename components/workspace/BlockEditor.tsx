@@ -466,6 +466,112 @@ function InteractionsPanel({
   );
 }
 
+// ─── Style Panel ─────────────────────────────────────────────────────────────
+
+const STYLE_PRESETS = [
+  { name: 'Default', bg: '', border: '', text: '', header: '' },
+  { name: 'Emerald', bg: '#064e3b', border: '#10b981', text: '#d1fae5', header: '#065f46' },
+  { name: 'Blue', bg: '#1e3a5f', border: '#3b82f6', text: '#dbeafe', header: '#1e40af' },
+  { name: 'Purple', bg: '#3b0764', border: '#8b5cf6', text: '#ede9fe', header: '#4c1d95' },
+  { name: 'Amber', bg: '#451a03', border: '#f59e0b', text: '#fef3c7', header: '#78350f' },
+  { name: 'Rose', bg: '#4c0519', border: '#f43f5e', text: '#ffe4e6', header: '#881337' },
+  { name: 'Dark', bg: '#0a0a0a', border: '#404040', text: '#d4d4d4', header: '#171717' },
+  { name: 'Light', bg: '#f3f4f6', border: '#d1d5db', text: '#1f2937', header: '#e5e7eb' },
+];
+
+function StylePanel({ config, set }: { config: BlockConfig; set: (k: keyof BlockConfig, v: unknown) => void }) {
+  const style = config.style ?? {};
+
+  const setStyle = (patch: Partial<NonNullable<BlockConfig['style']>>) => {
+    set('style', { ...style, ...patch });
+  };
+
+  const applyPreset = (preset: typeof STYLE_PRESETS[0]) => {
+    if (!preset.bg) {
+      set('style', undefined);
+    } else {
+      set('style', { bgColor: preset.bg, borderColor: preset.border, textColor: preset.text, headerColor: preset.header, opacity: style.opacity });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Presets */}
+      <div>
+        <p className="text-xs font-medium text-gray-300 mb-2">Presets</p>
+        <div className="grid grid-cols-4 gap-1.5">
+          {STYLE_PRESETS.map(preset => (
+            <button
+              key={preset.name}
+              onClick={() => applyPreset(preset)}
+              className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-600 hover:border-gray-400 transition-colors"
+            >
+              <div className="w-6 h-6 rounded" style={{ backgroundColor: preset.bg || '#1f2937', border: `2px solid ${preset.border || '#374151'}` }} />
+              <span className="text-xs text-gray-400">{preset.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom colors */}
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Background</label>
+            <div className="flex gap-2 items-center">
+              <input type="color" value={style.bgColor || '#1f2937'} onChange={e => setStyle({ bgColor: e.target.value })}
+                className="w-8 h-8 rounded cursor-pointer bg-gray-700 border border-gray-600" />
+              <input value={style.bgColor || ''} onChange={e => setStyle({ bgColor: e.target.value })} placeholder="#1f2937"
+                className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Border</label>
+            <div className="flex gap-2 items-center">
+              <input type="color" value={style.borderColor || '#374151'} onChange={e => setStyle({ borderColor: e.target.value })}
+                className="w-8 h-8 rounded cursor-pointer bg-gray-700 border border-gray-600" />
+              <input value={style.borderColor || ''} onChange={e => setStyle({ borderColor: e.target.value })} placeholder="#374151"
+                className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Text</label>
+            <div className="flex gap-2 items-center">
+              <input type="color" value={style.textColor || '#d1d5db'} onChange={e => setStyle({ textColor: e.target.value })}
+                className="w-8 h-8 rounded cursor-pointer bg-gray-700 border border-gray-600" />
+              <input value={style.textColor || ''} onChange={e => setStyle({ textColor: e.target.value })} placeholder="#d1d5db"
+                className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Header</label>
+            <div className="flex gap-2 items-center">
+              <input type="color" value={style.headerColor || '#1f2937'} onChange={e => setStyle({ headerColor: e.target.value })}
+                className="w-8 h-8 rounded cursor-pointer bg-gray-700 border border-gray-600" />
+              <input value={style.headerColor || ''} onChange={e => setStyle({ headerColor: e.target.value })} placeholder="#1f2937"
+                className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+            </div>
+          </div>
+        </div>
+
+        {/* Opacity */}
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Opacity: {Math.round((style.opacity ?? 1) * 100)}%</label>
+          <input type="range" min={0.1} max={1} step={0.05} value={style.opacity ?? 1}
+            onChange={e => setStyle({ opacity: parseFloat(e.target.value) })}
+            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+        </div>
+
+        {/* Reset */}
+        <button onClick={() => set('style', undefined)}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+          Reset to default
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -477,7 +583,7 @@ interface Props {
 }
 
 type EditorStep = 'type' | 'edit';
-type EditorTab = 'content' | 'interactions';
+type EditorTab = 'content' | 'style' | 'interactions';
 
 export default function BlockEditor({ block, currentW = 3, currentH = 3, onSave, onClose }: Props) {
   const isNew = !block;
@@ -552,6 +658,7 @@ export default function BlockEditor({ block, currentW = 3, currentH = 3, onSave,
                 <Input value={title} onChange={setTitle} placeholder="Block title" />
               </Field>
               {tab === 'content' && <ContentPanel type={type} config={config} set={set} />}
+              {tab === 'style' && <StylePanel config={config} set={set} />}
               {tab === 'interactions' && <InteractionsPanel config={config} set={set} currentW={currentW} currentH={currentH} />}
             </div>
           )}
