@@ -115,6 +115,155 @@ function AiChat({ block }: { block: Block }) {
   );
 }
 
+// ─── Inline Text Block ────────────────────────────────────────────────────────
+
+function InlineText({ block, onBlockUpdate }: { block: Block; onBlockUpdate?: RendererProps['onBlockUpdate'] }) {
+  const { config } = block;
+  const isLocked = config.textLocked !== false; // locked by default
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(config.textContent ?? '');
+
+  useEffect(() => { setText(config.textContent ?? ''); }, [config.textContent]);
+
+  const save = () => {
+    if (onBlockUpdate && text !== config.textContent) {
+      onBlockUpdate(block.id, { textContent: text });
+    }
+    setEditing(false);
+  };
+
+  const toggleLock = () => {
+    if (onBlockUpdate) onBlockUpdate(block.id, { textLocked: !isLocked });
+  };
+
+  return (
+    <div className="h-full overflow-auto flex flex-col">
+      <div className="flex-1">
+        {!isLocked && editing ? (
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onBlur={save}
+            onMouseDown={e => e.stopPropagation()}
+            autoFocus
+            className="w-full h-full text-sm text-gray-300 leading-relaxed bg-transparent border-none outline-none resize-none placeholder-gray-600"
+            placeholder="Type something..."
+          />
+        ) : (
+          <div
+            className={`text-sm text-gray-300 leading-relaxed whitespace-pre-wrap ${!isLocked ? 'cursor-text' : ''}`}
+            onClick={() => { if (!isLocked) setEditing(true); }}
+          >
+            {config.textContent
+              ? <AiSummary text={config.textContent} />
+              : <p className="text-gray-600 italic">{isLocked ? 'No content yet.' : 'Click to type...'}</p>
+            }
+          </div>
+        )}
+      </div>
+      <button
+        onClick={toggleLock}
+        className="mt-1 self-end p-1 text-gray-600 hover:text-gray-300 transition-colors"
+        title={isLocked ? 'Unlock editing' : 'Lock editing'}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {isLocked ? (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          ) : (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+          )}
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// ─── Inline List Block ───────────────────────────────────────────────────────
+
+function InlineList({ block, onBlockUpdate }: { block: Block; onBlockUpdate?: RendererProps['onBlockUpdate'] }) {
+  const { config } = block;
+  const items = config.listItems ?? [];
+  const [newItem, setNewItem] = useState('');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
+
+  const addItem = () => {
+    if (!newItem.trim() || !onBlockUpdate) return;
+    onBlockUpdate(block.id, { listItems: [...items, newItem.trim()] });
+    setNewItem('');
+  };
+
+  const removeItem = (idx: number) => {
+    if (!onBlockUpdate) return;
+    onBlockUpdate(block.id, { listItems: items.filter((_, i) => i !== idx) });
+  };
+
+  const startEdit = (idx: number) => {
+    setEditingIdx(idx);
+    setEditText(items[idx]);
+  };
+
+  const saveEdit = () => {
+    if (editingIdx === null || !onBlockUpdate) return;
+    const updated = items.map((item, i) => i === editingIdx ? editText.trim() || item : item);
+    onBlockUpdate(block.id, { listItems: updated });
+    setEditingIdx(null);
+    setEditText('');
+  };
+
+  return (
+    <div className="flex flex-col h-full gap-2">
+      <div className="flex-1 overflow-auto">
+        {items.length === 0 && <p className="text-xs text-gray-500 italic">No items yet. Add one below.</p>}
+        <ul className="space-y-1">
+          {items.map((item, i) => (
+            <li key={i} className="group flex items-center gap-2 text-sm text-gray-300">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full flex-shrink-0" />
+              {editingIdx === i ? (
+                <input
+                  value={editText}
+                  onChange={e => setEditText(e.target.value)}
+                  onBlur={saveEdit}
+                  onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingIdx(null); }}
+                  onMouseDown={e => e.stopPropagation()}
+                  autoFocus
+                  className="flex-1 text-sm bg-gray-700 px-1.5 py-0.5 rounded text-gray-100 outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              ) : (
+                <span className="flex-1 cursor-text" onClick={() => startEdit(i)}>{item}</span>
+              )}
+              <button
+                onClick={() => removeItem(i)}
+                className="p-0.5 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="flex gap-1.5">
+        <input
+          value={newItem}
+          onChange={e => setNewItem(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') addItem(); }}
+          onMouseDown={e => e.stopPropagation()}
+          placeholder="Add item..."
+          className="flex-1 text-xs px-2 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        />
+        <button
+          onClick={addItem}
+          className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors text-xs"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Renderer ────────────────────────────────────────────────────────────
 
 import { BlockAction } from '@/lib/agents/agent-types';
@@ -154,14 +303,7 @@ export default function BlockRenderer({ block, onBlockAction, onBlockUpdate, wor
 
     // ── Text ─────────────────────────────────────────────────────────────────
     case 'text':
-      return (
-        <div className="h-full overflow-auto">
-          {config.textContent
-            ? <AiSummary text={config.textContent} />
-            : <p className="text-sm text-gray-300">No content yet.</p>
-          }
-        </div>
-      );
+      return <InlineText block={block} onBlockUpdate={onBlockUpdate} />;
 
     // ── Link ─────────────────────────────────────────────────────────────────
     case 'link': {
@@ -200,24 +342,8 @@ export default function BlockRenderer({ block, onBlockAction, onBlockUpdate, wor
       return <iframe src={config.embedUrl} className="w-full h-full rounded border-0" sandbox="allow-scripts allow-same-origin allow-forms" title={block.title} />;
 
     // ── List ─────────────────────────────────────────────────────────────────
-    case 'list': {
-      const items = config.listItems ?? [];
-      return (
-        <div className="h-full overflow-auto">
-          {items.length === 0
-            ? <p className="text-xs text-gray-500">No items yet.</p>
-            : <ul className="space-y-1.5">
-                {items.map((item, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-gray-300">
-                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full flex-shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-          }
-        </div>
-      );
-    }
+    case 'list':
+      return <InlineList block={block} onBlockUpdate={onBlockUpdate} />;
 
     // ── Table ────────────────────────────────────────────────────────────────
     case 'table': {

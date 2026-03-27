@@ -61,6 +61,7 @@ export interface BlockConfig {
 
   // --- text ---
   textContent?: string;
+  textLocked?: boolean;
 
   // --- link ---
   linkUrl?: string;
