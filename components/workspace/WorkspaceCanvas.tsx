@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const GridLayout = require('react-grid-layout').default ?? require('react-grid-layout');
 
@@ -20,6 +20,22 @@ import AiAssistant from './AiAssistant';
 
 const COLS = 12;
 const ROW_HEIGHT = 80;
+
+// ─── Color mapping for agent ownership borders ──────────────────────────────
+const AGENT_COLOR_MAP: Record<string, string> = {
+  'bg-emerald-500': '#10b981',
+  'bg-violet-500': '#8b5cf6',
+  'bg-blue-500': '#3b82f6',
+  'bg-amber-500': '#f59e0b',
+  'bg-rose-500': '#f43f5e',
+  'bg-cyan-500': '#06b6d4',
+  'bg-pink-500': '#ec4899',
+  'bg-indigo-500': '#6366f1',
+};
+
+function getAgentBorderColor(colorClass: string): string {
+  return AGENT_COLOR_MAP[colorClass] ?? '#10b981';
+}
 
 function useLocalStorage<T>(key: string, initial: T) {
   const [state, setState] = useState<T>(() => {
@@ -41,13 +57,26 @@ function useLocalStorage<T>(key: string, initial: T) {
 
 export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace' }: { width: number; storageKey?: string }) {
   const [workspace, setWorkspace] = useLocalStorage<WorkspaceState>(storageKey, { blocks: [], layout: [] });
-  const [editMode, setEditMode] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingBlock, setEditingBlock] = useState<Block | undefined>(undefined);
   // Track expanded blocks (for expansion rules)
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
   // Track moved blocks original positions (for movement rules)
   const [movedBlocks, setMovedBlocks] = useState<Map<string, { x: number; y: number }>>(new Map());
+  // Touch long-press state
+  const [touchDragBlockId, setTouchDragBlockId] = useState<string | null>(null);
+  const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // z-order: last item in array = on top
+  const zOrder = workspace.zOrder ?? [];
+  const allowOverlap = workspace.allowOverlap ?? false;
+
+  const bringToFront = useCallback((blockId: string) => {
+    setWorkspace(prev => ({
+      ...prev,
+      zOrder: [...(prev.zOrder ?? []).filter(id => id !== blockId), blockId],
+    }));
+  }, [setWorkspace]);
 
   const openAddBlock = () => { setEditingBlock(undefined); setEditorOpen(true); };
   const openEditBlock = (block: Block) => { setEditingBlock(block); setEditorOpen(true); };
@@ -66,10 +95,21 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
   };
 
   const deleteBlock = (id: string) => {
-    setWorkspace(prev => ({ blocks: prev.blocks.filter(b => b.id !== id), layout: prev.layout.filter(l => l.i !== id) }));
+    setWorkspace(prev => ({
+      blocks: prev.blocks.filter(b => b.id !== id),
+      layout: prev.layout.filter(l => l.i !== id),
+      zOrder: (prev.zOrder ?? []).filter(z => z !== id),
+    }));
     setExpandedBlocks(prev => { const n = new Set(prev); n.delete(id); return n; });
     setMovedBlocks(prev => { const n = new Map(prev); n.delete(id); return n; });
   };
+
+  const handleBlockUpdate = useCallback((blockId: string, updates: Partial<BlockConfig>) => {
+    setWorkspace(prev => ({
+      ...prev,
+      blocks: prev.blocks.map(b => b.id === blockId ? { ...b, config: { ...b.config, ...updates } } : b),
+    }));
+  }, [setWorkspace]);
 
   const onLayoutChange = (newLayout: Layout[]) => {
     setWorkspace(prev => ({
@@ -84,7 +124,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
 
   // ── Interaction: Expansion ──────────────────────────────────────────────────
   const handleBlockClick = (block: Block, e: React.MouseEvent) => {
-    if (editMode) return;
+    bringToFront(block.id);
     const { expansionRule, movementRule } = block.config;
 
     if (expansionRule?.enabled && expansionRule.trigger === 'click') {
@@ -122,7 +162,6 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
 
   // ── Hover interactions ──────────────────────────────────────────────────────
   const handleBlockMouseEnter = (block: Block) => {
-    if (editMode) return;
     const { expansionRule, movementRule } = block.config;
     if (expansionRule?.enabled && expansionRule.trigger === 'hover' && !expandedBlocks.has(block.id)) {
       setExpandedBlocks(prev => new Set(prev).add(block.id));
@@ -139,7 +178,6 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
   };
 
   const handleBlockMouseLeave = (block: Block) => {
-    if (editMode) return;
     const { expansionRule, movementRule } = block.config;
     if (expansionRule?.enabled && expansionRule.trigger === 'hover' && expandedBlocks.has(block.id)) {
       setExpandedBlocks(prev => { const n = new Set(prev); n.delete(block.id); return n; });
@@ -152,6 +190,26 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
     }
   };
 
+  // ── Touch long-press ──────────────────────────────────────────────────────
+  const handleTouchStart = (blockId: string) => {
+    touchTimerRef.current = setTimeout(() => {
+      setTouchDragBlockId(blockId);
+      bringToFront(blockId);
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+  };
+
+  const handleTouchClearAll = () => {
+    setTouchDragBlockId(null);
+    handleTouchEnd();
+  };
+
   const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const target = e.target as HTMLElement;
@@ -160,13 +218,9 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
 
   // ── Agent Block Actions ────────────────────────────────────────────────────
   const handleBlockAction = useCallback((agentId: string, actions: BlockAction[]) => {
-    const agentDef = getAgent(agentId);
-
     setWorkspace(prev => {
       let blocks = [...prev.blocks];
       let layout = [...prev.layout];
-
-      // Find the agent block position for relative spawning
       const agentBlock = blocks.find(b => b.config.agentDefId === agentId);
       const agentLayout = agentBlock ? layout.find(l => l.i === agentBlock.id) : null;
 
@@ -176,55 +230,30 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
             const id = `block-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
             const blockType = (action.blockType ?? 'text') as Block['type'];
             const defaults = BLOCK_DEFAULTS[blockType] ?? { w: 3, h: 3, minW: 1, minH: 1 };
-
-            // Position near the agent block, or use provided position
             const pos = action.position ?? {
               x: agentLayout ? Math.min(agentLayout.x + agentLayout.w, 12 - defaults.w) : 0,
               y: agentLayout ? agentLayout.y : (layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)),
               w: defaults.w,
               h: defaults.h,
             };
-
-            const newBlock: Block = {
-              id,
-              type: blockType,
+            blocks.push({
+              id, type: blockType,
               title: action.title ?? 'Agent Output',
-              config: {
-                ...(action.config as BlockConfig ?? {}),
-                agentId, // Mark as owned by this agent
-              },
-            };
-
-            blocks.push(newBlock);
-            layout.push({
-              i: id,
-              x: pos.x, y: pos.y,
-              w: pos.w ?? defaults.w, h: pos.h ?? defaults.h,
-              minW: defaults.minW, minH: defaults.minH,
+              config: { ...(action.config as BlockConfig ?? {}), agentId },
             });
-
-            // Track linked block in agent session
+            layout.push({ i: id, x: pos.x, y: pos.y, w: pos.w ?? defaults.w, h: pos.h ?? defaults.h, minW: defaults.minW, minH: defaults.minH });
             addLinkedBlock(agentId, id);
             break;
           }
           case 'update': {
             if (!action.blockId) break;
-            // Only allow updating blocks owned by this agent
             const target = blocks.find(b => b.id === action.blockId && b.config.agentId === agentId);
             if (!target) break;
-            blocks = blocks.map(b => {
-              if (b.id !== action.blockId) return b;
-              return {
-                ...b,
-                title: action.title ?? b.title,
-                config: { ...b.config, ...(action.config as BlockConfig ?? {}) },
-              };
-            });
+            blocks = blocks.map(b => b.id !== action.blockId ? b : { ...b, title: action.title ?? b.title, config: { ...b.config, ...(action.config as BlockConfig ?? {}) } });
             break;
           }
           case 'remove': {
             if (!action.blockId) break;
-            // Only allow removing blocks owned by this agent
             const toRemove = blocks.find(b => b.id === action.blockId && b.config.agentId === agentId);
             if (!toRemove) break;
             blocks = blocks.filter(b => b.id !== action.blockId);
@@ -234,8 +263,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
           }
         }
       }
-
-      return { blocks, layout };
+      return { ...prev, blocks, layout };
     });
   }, [setWorkspace]);
 
@@ -244,34 +272,38 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
     setWorkspace(buildStarterLayout());
   };
 
+  const toggleOverlap = () => {
+    setWorkspace(prev => ({ ...prev, allowOverlap: !prev.allowOverlap }));
+  };
+
   const gridLayout: Layout[] = workspace.layout.map(l => ({
     i: l.i, x: l.x, y: l.y, w: l.w, h: l.h,
     minW: l.minW ?? 1, minH: l.minH ?? 1,
-    isDraggable: editMode,
-    isResizable: editMode,
+    isDraggable: true,
+    isResizable: true,
   }));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" onTouchEnd={handleTouchClearAll}>
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
+        <AiAssistant workspace={workspace} onApply={setWorkspace} />
+
         <button
-          onClick={() => setEditMode(e => !e)}
+          onClick={toggleOverlap}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-            editMode
-              ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+            allowOverlap
+              ? 'bg-violet-500/20 text-violet-400 border-violet-500/40'
               : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-200 hover:border-gray-500'
           }`}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={editMode ? 'M5 13l4 4L19 7' : 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z'} />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
           </svg>
-          {editMode ? 'Done' : 'Edit'}
+          {allowOverlap ? 'Overlap On' : 'Overlap Off'}
         </button>
 
-        <AiAssistant workspace={workspace} onApply={setWorkspace} />
-
-        {!editMode && workspace.blocks.length === 0 && (
+        {workspace.blocks.length === 0 && (
           <button onClick={loadStarter}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 text-gray-400 border border-gray-700 hover:text-gray-200 hover:border-gray-500 text-xs font-medium rounded-lg transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -281,8 +313,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
           </button>
         )}
 
-        {editMode && <span className="text-xs text-gray-600">drag to move · corner to resize · grid IDs shown on blocks</span>}
-        {!editMode && workspace.blocks.length > 0 && <span className="text-xs text-gray-600">double-click canvas to add</span>}
+        <span className="text-xs text-gray-600">drag header to move · corners & edges to resize · double-click canvas to add</span>
 
         <div className="ml-auto flex items-center gap-2">
           <button onClick={openAddBlock}
@@ -318,76 +349,76 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
           rowHeight={ROW_HEIGHT}
           width={width}
           onLayoutChange={onLayoutChange}
-          isDraggable={editMode}
-          isResizable={editMode}
-          draggableHandle=".drag-handle"
+          isDraggable={true}
+          isResizable={true}
+          draggableHandle=".block-drag-handle"
+          resizeHandles={['se', 'sw', 'ne', 'nw', 'e', 'w', 'n', 's']}
+          preventCollision={!allowOverlap}
           margin={[12, 12]}
           containerPadding={[12, 12]}
         >
           {workspace.blocks.map(block => {
             const layoutItem = workspace.layout.find(l => l.i === block.id);
             if (!layoutItem) return null;
-            const gridId = toGridId(layoutItem.x, layoutItem.y);
             const hasExpansion = block.config.expansionRule?.enabled;
             const hasMovement = block.config.movementRule?.enabled;
             const isExpanded = expandedBlocks.has(block.id);
             const ownerAgent = block.config.agentId ? getAgent(block.config.agentId) : null;
+            const blockZIndex = zOrder.indexOf(block.id) + 1;
+            const isTouchDragging = touchDragBlockId === block.id;
 
             return (
               <div
                 key={block.id}
                 className={`bg-gray-800/90 backdrop-blur-sm border rounded-xl overflow-hidden flex flex-col transition-colors ${
-                  editMode ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-gray-700/80 hover:border-gray-600'
-                } ${hasExpansion || hasMovement ? 'cursor-pointer' : ''}`}
-                style={ownerAgent && !editMode ? { borderLeftWidth: '3px', borderLeftColor: ownerAgent.color.replace('bg-', '').includes('emerald') ? '#10b981' : ownerAgent.color.replace('bg-', '').includes('violet') ? '#8b5cf6' : ownerAgent.color.replace('bg-', '').includes('blue') ? '#3b82f6' : ownerAgent.color.replace('bg-', '').includes('amber') ? '#f59e0b' : ownerAgent.color.replace('bg-', '').includes('rose') ? '#f43f5e' : ownerAgent.color.replace('bg-', '').includes('cyan') ? '#06b6d4' : ownerAgent.color.replace('bg-', '').includes('pink') ? '#ec4899' : ownerAgent.color.replace('bg-', '').includes('indigo') ? '#6366f1' : '#10b981' } : undefined}
+                  'border-gray-700/80 hover:border-gray-600'
+                } ${hasExpansion || hasMovement ? 'cursor-pointer' : ''} ${isTouchDragging ? 'block-wiggle ring-2 ring-emerald-500/50' : ''}`}
+                style={{
+                  zIndex: blockZIndex || 'auto',
+                  ...(ownerAgent ? { borderLeftWidth: '3px', borderLeftColor: getAgentBorderColor(ownerAgent.color) } : {}),
+                }}
                 onClick={e => handleBlockClick(block, e)}
                 onMouseEnter={() => handleBlockMouseEnter(block)}
                 onMouseLeave={() => handleBlockMouseLeave(block)}
+                onTouchStart={() => handleTouchStart(block.id)}
+                onTouchEnd={handleTouchEnd}
               >
                 {/* Block header */}
-                <div className={`flex items-center justify-between px-3 py-1.5 border-b border-gray-700/60 flex-shrink-0 ${editMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''}`}>
+                <div className="block-drag-handle flex items-center justify-between px-3 py-1.5 border-b border-gray-700/60 flex-shrink-0 cursor-grab active:cursor-grabbing">
                   <div className="flex items-center gap-2 min-w-0">
-                    {editMode && (
-                      <svg className="w-3 h-3 text-gray-600 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 6a2 2 0 100-4 2 2 0 000 4zM8 14a2 2 0 100-4 2 2 0 000 4zM8 22a2 2 0 100-4 2 2 0 000 4zM16 6a2 2 0 100-4 2 2 0 000 4zM16 14a2 2 0 100-4 2 2 0 000 4zM16 22a2 2 0 100-4 2 2 0 000 4z" />
-                      </svg>
-                    )}
+                    <svg className="w-3 h-3 text-gray-600 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 6a2 2 0 100-4 2 2 0 000 4zM8 14a2 2 0 100-4 2 2 0 000 4zM8 22a2 2 0 100-4 2 2 0 000 4zM16 6a2 2 0 100-4 2 2 0 000 4zM16 14a2 2 0 100-4 2 2 0 000 4zM16 22a2 2 0 100-4 2 2 0 000 4z" />
+                    </svg>
                     <p className="text-xs font-medium text-gray-500 truncate">{block.title}</p>
                     {/* Agent ownership badge */}
-                    {ownerAgent && !editMode && (
+                    {ownerAgent && (
                       <span className={`w-4 h-4 ${ownerAgent.color} rounded flex items-center justify-center flex-shrink-0`} title={`Owned by ${ownerAgent.name}`}>
                         <span className="text-white text-xs font-bold" style={{ fontSize: '8px' }}>{ownerAgent.initial}</span>
                       </span>
                     )}
-                    {/* Grid ID badge — always in system, shown in edit mode */}
-                    {editMode && (
-                      <span className="text-xs text-gray-600 font-mono flex-shrink-0">{gridId}</span>
-                    )}
                     {/* Interaction indicators */}
-                    {!editMode && hasExpansion && (
+                    {hasExpansion && (
                       <span className={`text-xs px-1 py-0.5 rounded font-mono flex-shrink-0 ${isExpanded ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-700 text-gray-500'}`}>
                         {isExpanded ? '↙' : '↗'}
                       </span>
                     )}
-                    {!editMode && hasMovement && (
+                    {hasMovement && (
                       <span className="text-xs bg-gray-700 text-gray-500 px-1 py-0.5 rounded font-mono flex-shrink-0">↕</span>
                     )}
                   </div>
-                  {editMode && (
-                    <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                      <button onClick={e => { e.stopPropagation(); openEditBlock(block); }} className="p-1 text-gray-600 hover:text-gray-200 rounded transition-colors">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                      </button>
-                      <button onClick={e => { e.stopPropagation(); deleteBlock(block.id); }} className="p-1 text-gray-600 hover:text-red-400 rounded transition-colors">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    <button onClick={e => { e.stopPropagation(); openEditBlock(block); }} className="p-1 text-gray-600 hover:text-gray-200 rounded transition-colors" title="Edit">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); deleteBlock(block.id); }} className="p-1 text-gray-600 hover:text-red-400 rounded transition-colors" title="Delete">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 p-3 overflow-hidden min-h-0">
-                  <BlockRenderer block={block} onBlockAction={handleBlockAction} workspaceBlocks={workspace.blocks} />
+                  <BlockRenderer block={block} onBlockAction={handleBlockAction} onBlockUpdate={handleBlockUpdate} workspaceBlocks={workspace.blocks} />
                 </div>
               </div>
             );

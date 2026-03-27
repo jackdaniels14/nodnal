@@ -122,10 +122,11 @@ import { BlockAction } from '@/lib/agents/agent-types';
 interface RendererProps {
   block: Block;
   onBlockAction?: (agentId: string, actions: BlockAction[]) => void;
+  onBlockUpdate?: (blockId: string, updates: Partial<import('@/lib/workspace-types').BlockConfig>) => void;
   workspaceBlocks?: Block[];
 }
 
-export default function BlockRenderer({ block, onBlockAction, workspaceBlocks }: RendererProps) {
+export default function BlockRenderer({ block, onBlockAction, onBlockUpdate, workspaceBlocks }: RendererProps) {
   const { type, config } = block;
 
   switch (type) {

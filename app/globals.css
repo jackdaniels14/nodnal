@@ -11,3 +11,94 @@ body {
   font-family: Inter, Arial, Helvetica, sans-serif;
   height: 100%;
 }
+
+/* ─── iOS-style wiggle for touch drag ─────────────────────────────────────── */
+@keyframes block-wiggle {
+  0%, 100% { transform: rotate(-0.5deg); }
+  50% { transform: rotate(0.5deg); }
+}
+.block-wiggle {
+  animation: block-wiggle 0.15s ease-in-out infinite;
+}
+
+/* ─── Resize handles for all 8 directions ─────────────────────────────────── */
+.react-resizable-handle {
+  position: absolute;
+  background: transparent;
+  z-index: 10;
+}
+.react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  background: #10b981;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.react-grid-item:hover .react-resizable-handle::after {
+  opacity: 0.6;
+}
+
+/* Corner handles */
+.react-resizable-handle-se,
+.react-resizable-handle-sw,
+.react-resizable-handle-ne,
+.react-resizable-handle-nw {
+  width: 14px;
+  height: 14px;
+}
+.react-resizable-handle-se { bottom: 0; right: 0; cursor: se-resize; }
+.react-resizable-handle-sw { bottom: 0; left: 0; cursor: sw-resize; }
+.react-resizable-handle-ne { top: 0; right: 0; cursor: ne-resize; }
+.react-resizable-handle-nw { top: 0; left: 0; cursor: nw-resize; }
+.react-resizable-handle-se::after,
+.react-resizable-handle-sw::after,
+.react-resizable-handle-ne::after,
+.react-resizable-handle-nw::after {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.react-resizable-handle-se::after { bottom: 3px; right: 3px; }
+.react-resizable-handle-sw::after { bottom: 3px; left: 3px; }
+.react-resizable-handle-ne::after { top: 3px; right: 3px; }
+.react-resizable-handle-nw::after { top: 3px; left: 3px; }
+
+/* Edge handles */
+.react-resizable-handle-e,
+.react-resizable-handle-w {
+  width: 8px;
+  height: 50%;
+  top: 25%;
+  cursor: ew-resize;
+}
+.react-resizable-handle-e { right: 0; }
+.react-resizable-handle-w { left: 0; }
+.react-resizable-handle-e::after,
+.react-resizable-handle-w::after {
+  width: 3px;
+  height: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.react-resizable-handle-e::after { right: 2px; }
+.react-resizable-handle-w::after { left: 2px; }
+
+.react-resizable-handle-n,
+.react-resizable-handle-s {
+  height: 8px;
+  width: 50%;
+  left: 25%;
+  cursor: ns-resize;
+}
+.react-resizable-handle-n { top: 0; }
+.react-resizable-handle-s { bottom: 0; }
+.react-resizable-handle-n::after,
+.react-resizable-handle-s::after {
+  height: 3px;
+  width: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.react-resizable-handle-n::after { top: 2px; }
+.react-resizable-handle-s::after { bottom: 2px; }

@@ -142,6 +142,8 @@ export interface GridItem {
 export interface WorkspaceState {
   blocks: Block[];
   layout: GridItem[];
+  zOrder?: string[];
+  allowOverlap?: boolean;
 }
 
 // ─── Default sizes ────────────────────────────────────────────────────────────
