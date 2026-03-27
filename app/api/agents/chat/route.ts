@@ -140,12 +140,21 @@ async function executeAgentTool(
     switch (toolName) {
       // ── Web Fetch tools (work everywhere) ──
       case 'web_fetch': {
-        const result = await fetchPageContent(input.url as string);
-        return {
-          type: 'tool_result',
-          tool_use_id: '',
-          content: `Page: "${result.title}" (${result.url})\n\n${result.content}`,
-        };
+        try {
+          const result = await fetchPageContent(input.url as string);
+          return {
+            type: 'tool_result',
+            tool_use_id: '',
+            content: `Page: "${result.title}" (${result.url})\n\n${result.content}`,
+          };
+        } catch (fetchErr) {
+          return {
+            type: 'tool_result',
+            tool_use_id: '',
+            content: `Failed to fetch ${input.url}: ${String(fetchErr)}`,
+            is_error: true,
+          };
+        }
       }
       case 'web_search_scrape': {
         const urls = input.urls as string[];

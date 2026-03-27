@@ -15,7 +15,7 @@ async function getBrowser() {
     const browserlessKey = process.env.BROWSERLESS_API_KEY?.trim();
     if (browserlessKey) {
       // Connect to cloud browser (works on Firebase/Cloud Run)
-      browser = await chromium.connect(`wss://chrome.browserless.io?token=${browserlessKey}`);
+      browser = await chromium.connectOverCDP(`wss://chrome.browserless.io?token=${browserlessKey}`);
     } else {
       // Local browser (works on localhost)
       browser = await chromium.launch({ headless: true });
