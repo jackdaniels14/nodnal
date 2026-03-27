@@ -11,3 +11,5 @@ runConfig:
 env:
   - variable: ANTHROPIC_API_KEY
     secret: anthropic-api-key
+  - variable: NEXT_PUBLIC_AZURE_CLIENT_ID
+    secret: azure-client-id
