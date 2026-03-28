@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
 
 // ─── OpenClaw Agent Chat Handler ─────────────────────────────────────────────
-// Runs agent turns via the OpenClaw CLI.
+// Sends messages to OpenClaw Gateway via HTTP RPC.
 
 export async function POST(req: NextRequest) {
   const { agentId, messages, systemPrompt } = await req.json();
@@ -18,56 +14,75 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Call OpenClaw agent via CLI
-    const escapedMessage = prompt.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    const agentFlag = agentId && agentId !== 'default' ? `--agent ${agentId}` : '--agent main';
-    const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || '';
+    // Use OpenClaw gateway via HTTP RPC
+    const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || 'http://34.67.77.7:18789';
+    const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || 'nodnal-openclaw-secret-2026';
 
-    // Find openclaw binary
-    const openclawPaths = [
-      '/Users/workstation/Downloads/node-v22.14.0-darwin-arm64/bin/openclaw',
-      '/usr/local/bin/openclaw',
-      '/opt/homebrew/bin/openclaw',
-      'openclaw',
-    ];
-    const openclawBin = openclawPaths[0]; // Use known path first
-
-    const cmd = `"${openclawBin}" agent ${agentFlag} --local --message "${escapedMessage}" --json 2>&1`;
-
-    const { stdout } = await execAsync(cmd, {
-      timeout: 300000, // 5 min for complex agent tasks
-      env: {
-        ...process.env,
-        ANTHROPIC_API_KEY: apiKey,
-        HOME: process.env.HOME || '/Users/workstation',
-        PATH: '/Users/workstation/Downloads/node-v22.14.0-darwin-arm64/bin:' + (process.env.PATH || '/usr/bin:/bin'),
+    const rpcRes = await fetch(`${gatewayUrl}/rpc`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {}),
       },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: 'sessions.send',
+        params: {
+          key: `agent:main:nodnal-${agentId}`,
+          message: prompt,
+          createIfMissing: true,
+        },
+      }),
+      signal: AbortSignal.timeout(300000),
     });
 
-    // Parse JSON output — OpenClaw outputs JSON with --json flag
-    // Find the JSON object in stdout (may have log lines before it)
-    const jsonMatch = stdout.match(/\{[\s\S]*"payloads"[\s\S]*\}/);
-    if (!jsonMatch) {
-      // Try to extract any useful text
-      const cleanOutput = stdout
-        .split('\n')
-        .filter((line: string) => !line.startsWith('['))
-        .join('\n')
-        .trim();
-      return NextResponse.json({ agentId, content: cleanOutput || stdout, blockActions: [] });
+    const rpcData = await rpcRes.json() as { result?: { payloads?: Array<{ text?: string }>; status?: string; runId?: string }; error?: { message?: string } };
+
+    if (rpcData.error) {
+      throw new Error(rpcData.error.message || JSON.stringify(rpcData.error));
     }
 
-    const result = JSON.parse(jsonMatch[0]);
-    const payloads = result.payloads || [];
-    const rawContent = payloads.map((p: { text?: string }) => p.text || '').join('\n').trim();
+    // If session just started, wait for the agent to respond
+    if (rpcData.result?.status === 'started' && rpcData.result?.runId) {
+      // Poll for completion
+      let attempts = 0;
+      while (attempts < 60) {
+        await new Promise(r => setTimeout(r, 2000));
+        const histRes = await fetch(`${gatewayUrl}/rpc`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {}),
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: Date.now(),
+            method: 'sessions.history',
+            params: { key: `agent:main:nodnal-${agentId}`, limit: 1 },
+          }),
+        });
+        const histData = await histRes.json() as { result?: { messages?: Array<{ role?: string; text?: string }> } };
+        const lastMsg = histData.result?.messages?.[0];
+        if (lastMsg?.role === 'assistant' && lastMsg?.text) {
+          return NextResponse.json({ agentId, content: lastMsg.text, blockActions: [] });
+        }
+        attempts++;
+      }
+      return NextResponse.json({ agentId, content: 'Agent is processing your request. Check back shortly.', blockActions: [] });
+    }
+
+    // Direct response from gateway
+    const respPayloads = rpcData.result?.payloads || [];
+    const rawContent = respPayloads.map((p: { text?: string }) => p.text || '').join('\n').trim() || JSON.stringify(rpcData.result);
 
     // Parse block actions
     let content = rawContent;
     let blockActions: unknown[] = [];
-    const match = rawContent.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
-    if (match) {
+    const baMatch = rawContent.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
+    if (baMatch) {
       try {
-        blockActions = JSON.parse(match[1]);
+        blockActions = JSON.parse(baMatch[1]);
         content = rawContent.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
       } catch { /* keep raw */ }
     }
