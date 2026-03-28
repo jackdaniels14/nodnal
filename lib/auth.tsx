@@ -14,8 +14,6 @@ import {
 } from 'firebase/auth';
 import app from './firebase';
 
-const auth = getAuth(app);
-
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
@@ -38,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const auth = getAuth(app);
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
@@ -46,20 +45,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    const auth = getAuth(app);
     await signInWithEmailAndPassword(auth, email, password);
   };
 
   const signUp = async (email: string, password: string, name: string) => {
+    const auth = getAuth(app);
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
   };
 
   const signInWithGoogle = async () => {
+    const auth = getAuth(app);
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
   };
 
   const signOut = async () => {
+    const auth = getAuth(app);
     await firebaseSignOut(auth);
   };
 

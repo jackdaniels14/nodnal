@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { AuthProvider } from "@/lib/auth";
+import { AuthWrapper } from "./auth-wrapper";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.className} h-full`}>
       <body className="h-full">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthWrapper>{children}</AuthWrapper>
       </body>
     </html>
   );
