@@ -1,16 +1,44 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import { useState } from 'react';
 import { WorkspaceProvider } from '@/lib/workspace-store';
+import { useAuth } from '@/lib/auth';
 
 export default function ConsoleLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/login');
+    }
+  }, [user, loading, router]);
+
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-900">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 bg-emerald-500 rounded-lg animate-pulse flex items-center justify-center">
+            <span className="text-white font-bold">N</span>
+          </div>
+          <p className="text-sm text-gray-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render console if not authenticated
+  if (!user) return null;
 
   return (
     <WorkspaceProvider>

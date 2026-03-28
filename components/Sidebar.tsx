@@ -4,6 +4,33 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import { useWorkspace } from '@/lib/workspace-store';
+import { useAuth } from '@/lib/auth';
+
+function UserFooter() {
+  const { user, signOut } = useAuth();
+  return (
+    <div className="p-3 border-t border-gray-800">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 bg-gray-700 rounded-full flex items-center justify-center flex-shrink-0">
+          {user?.photoURL ? (
+            <img src={user.photoURL} alt="" className="w-7 h-7 rounded-full" />
+          ) : (
+            <span className="text-xs text-gray-300 font-medium">{(user?.displayName?.[0] || user?.email?.[0] || '?').toUpperCase()}</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-white truncate">{user?.displayName || 'User'}</p>
+          <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+        </div>
+        <button onClick={signOut} className="p-1.5 text-gray-500 hover:text-red-400 transition-colors" title="Sign out">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -268,9 +295,7 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      <div className="p-4 border-t border-gray-800">
-        <p className="text-xs text-gray-600 text-center">Nodnal v0.1</p>
-      </div>
+      <UserFooter />
     </div>
   );
 }
