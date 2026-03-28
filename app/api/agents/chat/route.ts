@@ -1,44 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // ─── OpenClaw Agent Chat Handler ─────────────────────────────────────────────
-// Sends messages to the OpenClaw Gateway and returns the agent's response.
-// Gateway runs locally (openclaw gateway) or on a remote host.
-
-const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://localhost:18788';
-const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
-
-async function callGateway(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  const url = `${GATEWAY_URL}/rpc`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(GATEWAY_TOKEN ? { Authorization: `Bearer ${GATEWAY_TOKEN}` } : {}),
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method,
-      params,
-    }),
-    signal: AbortSignal.timeout(120000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Gateway error: ${res.status} ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  if (data.error) {
-    throw new Error(data.error.message || JSON.stringify(data.error));
-  }
-  return data.result;
-}
+// Runs agent turns via the OpenClaw CLI.
 
 export async function POST(req: NextRequest) {
-  const { agentId, messages, systemPrompt, linkedBlockIds, workspaceContext } = await req.json();
+  const { agentId, messages, systemPrompt } = await req.json();
 
-  // Get the latest user message
   const userMessages = messages.filter((m: { role: string }) => m.role === 'user');
   const prompt = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : '';
 
@@ -46,27 +17,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ agentId, content: 'No message provided.', blockActions: [] });
   }
 
-  // Build context
-  const contextParts: string[] = [];
-  if (linkedBlockIds?.length) contextParts.push(`Linked blocks: ${linkedBlockIds.join(', ')}`);
-  if (workspaceContext?.length) {
-    contextParts.push(`Workspace: ${workspaceContext.map((b: { type: string; title: string }) => `[${b.type}] "${b.title}"`).join(', ')}`);
-  }
-
-  const fullMessage = [
-    contextParts.length > 0 ? `[Context: ${contextParts.join('; ')}]\n\n` : '',
-    prompt,
-  ].join('');
-
   try {
-    // Try OpenClaw Gateway first
-    const result = await callGateway('agent.run', {
-      message: fullMessage,
-      agent: agentId || undefined,
-      systemPrompt: systemPrompt || undefined,
-    }) as { reply?: string; content?: string; text?: string };
+    // Call OpenClaw agent via CLI
+    const escapedMessage = prompt.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    const agentFlag = agentId && agentId !== 'default' ? `--agent ${agentId}` : '--agent main';
+    const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || '';
 
-    const rawContent = result?.reply || result?.content || result?.text || JSON.stringify(result);
+    // Find openclaw binary
+    const openclawPaths = [
+      '/Users/workstation/Downloads/node-v22.14.0-darwin-arm64/bin/openclaw',
+      '/usr/local/bin/openclaw',
+      '/opt/homebrew/bin/openclaw',
+      'openclaw',
+    ];
+    const openclawBin = openclawPaths[0]; // Use known path first
+
+    const cmd = `"${openclawBin}" agent ${agentFlag} --local --message "${escapedMessage}" --json 2>&1`;
+
+    const { stdout } = await execAsync(cmd, {
+      timeout: 300000, // 5 min for complex agent tasks
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: apiKey,
+        HOME: process.env.HOME || '/Users/workstation',
+        PATH: '/Users/workstation/Downloads/node-v22.14.0-darwin-arm64/bin:' + (process.env.PATH || '/usr/bin:/bin'),
+      },
+    });
+
+    // Parse JSON output — OpenClaw outputs JSON with --json flag
+    // Find the JSON object in stdout (may have log lines before it)
+    const jsonMatch = stdout.match(/\{[\s\S]*"payloads"[\s\S]*\}/);
+    if (!jsonMatch) {
+      // Try to extract any useful text
+      const cleanOutput = stdout
+        .split('\n')
+        .filter((line: string) => !line.startsWith('['))
+        .join('\n')
+        .trim();
+      return NextResponse.json({ agentId, content: cleanOutput || stdout, blockActions: [] });
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+    const payloads = result.payloads || [];
+    const rawContent = payloads.map((p: { text?: string }) => p.text || '').join('\n').trim();
 
     // Parse block actions
     let content = rawContent;
@@ -84,12 +77,19 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
 
-    // If gateway is unreachable, fall back to direct Anthropic API
-    if (errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch failed') || errMsg.includes('Gateway error')) {
+    // If OpenClaw CLI not found, fall back to direct API
+    if (errMsg.includes('not found') || errMsg.includes('ENOENT')) {
       return await fallbackDirectApi(agentId, prompt, systemPrompt);
     }
 
-    return NextResponse.json({ agentId, content: `Error: ${errMsg}`, blockActions: [] });
+    // Extract useful error from stderr
+    const cleanErr = errMsg
+      .split('\n')
+      .filter((line: string) => !line.includes('[diagnostic]') && !line.includes('[model-fallback'))
+      .join('\n')
+      .trim();
+
+    return NextResponse.json({ agentId, content: `Agent error: ${cleanErr}`, blockActions: [] });
   }
 }
 
@@ -100,7 +100,7 @@ async function fallbackDirectApi(agentId: string, prompt: string, systemPrompt: 
   if (!apiKey) {
     return NextResponse.json({
       agentId,
-      content: 'OpenClaw Gateway is not running and no ANTHROPIC_API_KEY is set.\n\nStart the gateway with: openclaw gateway\n\nOr set ANTHROPIC_API_KEY in .env.local for direct API fallback.',
+      content: 'OpenClaw is not installed and no ANTHROPIC_API_KEY is set.\n\nInstall OpenClaw: npm install -g openclaw@latest\nOr set ANTHROPIC_API_KEY in .env.local',
       blockActions: [],
     });
   }
@@ -112,7 +112,7 @@ async function fallbackDirectApi(agentId: string, prompt: string, systemPrompt: 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      system: systemPrompt || 'You are a helpful AI agent. Note: OpenClaw Gateway is offline so browser tools are unavailable. Answer from your knowledge.',
+      system: systemPrompt || 'You are a helpful AI agent. Note: OpenClaw is offline so browser/web tools are unavailable.',
       messages: [{ role: 'user', content: prompt }],
     });
 
