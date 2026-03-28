@@ -1,95 +1,108 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// ─── Agent Chat Handler ──────────────────────────────────────────────────────
-// Proxies to the Agent SDK server running separately.
-// Falls back to direct Anthropic API if agent server is unavailable.
+// ─── OpenClaw Agent Chat Handler ─────────────────────────────────────────────
+// Sends messages to the OpenClaw Gateway and returns the agent's response.
+// Gateway runs locally (openclaw gateway) or on a remote host.
 
-const AGENT_SERVER_URL = process.env.AGENT_SERVER_URL || 'http://localhost:3100';
+const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://localhost:18788';
+const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
+
+async function callGateway(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  const url = `${GATEWAY_URL}/rpc`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(GATEWAY_TOKEN ? { Authorization: `Bearer ${GATEWAY_TOKEN}` } : {}),
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      params,
+    }),
+    signal: AbortSignal.timeout(120000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Gateway error: ${res.status} ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  if (data.error) {
+    throw new Error(data.error.message || JSON.stringify(data.error));
+  }
+  return data.result;
+}
 
 export async function POST(req: NextRequest) {
   const { agentId, messages, systemPrompt, linkedBlockIds, workspaceContext } = await req.json();
 
-  // Build context string from workspace blocks
-  const contextParts: string[] = [];
-  if (linkedBlockIds?.length) {
-    contextParts.push(`Linked blocks: ${linkedBlockIds.join(', ')}`);
-  }
-  if (workspaceContext?.length) {
-    contextParts.push(`Workspace: ${workspaceContext.map((b: { type: string; title: string; id: string }) => `[${b.type}] "${b.title}"`).join(', ')}`);
-  }
-
-  // Get the latest user message as the prompt
+  // Get the latest user message
   const userMessages = messages.filter((m: { role: string }) => m.role === 'user');
   const prompt = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : '';
 
-  // Build conversation history for context
-  const history = messages.slice(0, -1).map((m: { role: string; content: string }) => `${m.role}: ${m.content}`).join('\n');
-  const fullContext = [
-    history ? `Previous conversation:\n${history}` : '',
-    contextParts.length > 0 ? contextParts.join('\n') : '',
-  ].filter(Boolean).join('\n\n');
+  if (!prompt) {
+    return NextResponse.json({ agentId, content: 'No message provided.', blockActions: [] });
+  }
+
+  // Build context
+  const contextParts: string[] = [];
+  if (linkedBlockIds?.length) contextParts.push(`Linked blocks: ${linkedBlockIds.join(', ')}`);
+  if (workspaceContext?.length) {
+    contextParts.push(`Workspace: ${workspaceContext.map((b: { type: string; title: string }) => `[${b.type}] "${b.title}"`).join(', ')}`);
+  }
+
+  const fullMessage = [
+    contextParts.length > 0 ? `[Context: ${contextParts.join('; ')}]\n\n` : '',
+    prompt,
+  ].join('');
 
   try {
-    // Try the Claude Agent SDK server first
-    const agentRes = await fetch(`${AGENT_SERVER_URL}/api/agent/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentId,
-        prompt,
-        systemPrompt: [
-          systemPrompt || 'You are a helpful AI agent.',
-          '',
-          'You have browser tools to visit websites, read content, fill forms, click buttons, and take screenshots.',
-          'When asked to look something up or interact with a website, ALWAYS use the navigate tool.',
-          'Do not make up information — use your tools to find it.',
-          '',
-          'You can create blocks on the workspace. Wrap commands in <block-actions>[...]</block-actions>.',
-          'Actions: spawn (blockType, title, config), update (blockId, config), remove (blockId).',
-          'Block types: stat {statValue, statLabel}, text {textContent}, table {tableHeaders, tableRows}, chart {chartType, chartData}, list {listItems}.',
-        ].join('\n'),
-        context: fullContext,
-      }),
-      signal: AbortSignal.timeout(120000), // 2 min timeout for complex agent tasks
-    });
+    // Try OpenClaw Gateway first
+    const result = await callGateway('agent.run', {
+      message: fullMessage,
+      agent: agentId || undefined,
+      systemPrompt: systemPrompt || undefined,
+    }) as { reply?: string; content?: string; text?: string };
 
-    if (agentRes.ok) {
-      const data = await agentRes.json();
-      return NextResponse.json(data);
+    const rawContent = result?.reply || result?.content || result?.text || JSON.stringify(result);
+
+    // Parse block actions
+    let content = rawContent;
+    let blockActions: unknown[] = [];
+    const match = rawContent.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
+    if (match) {
+      try {
+        blockActions = JSON.parse(match[1]);
+        content = rawContent.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
+      } catch { /* keep raw */ }
     }
 
-    // Agent server returned error
-    const errText = await agentRes.text();
-    return NextResponse.json({
-      agentId,
-      content: `Agent server error: ${errText}`,
-      blockActions: [],
-    });
+    return NextResponse.json({ agentId, content, blockActions });
 
   } catch (err) {
-    // Agent server unreachable — fall back to direct API call
     const errMsg = err instanceof Error ? err.message : String(err);
 
-    // Check if it's just a connection error (server not running)
-    if (errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch failed') || errMsg.includes('TimeoutError')) {
-      // Fallback: use Anthropic API directly
-      return await directApiCall(agentId, prompt, systemPrompt, fullContext);
+    // If gateway is unreachable, fall back to direct Anthropic API
+    if (errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch failed') || errMsg.includes('Gateway error')) {
+      return await fallbackDirectApi(agentId, prompt, systemPrompt);
     }
 
-    return NextResponse.json({
-      agentId,
-      content: `Error: ${errMsg}`,
-      blockActions: [],
-    });
+    return NextResponse.json({ agentId, content: `Error: ${errMsg}`, blockActions: [] });
   }
 }
 
 // ─── Fallback: Direct Anthropic API ──────────────────────────────────────────
 
-async function directApiCall(agentId: string, prompt: string, systemPrompt: string, context: string) {
+async function fallbackDirectApi(agentId: string, prompt: string, systemPrompt: string) {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
-    return NextResponse.json({ agentId, content: 'ANTHROPIC_API_KEY not set and agent server unavailable.', blockActions: [] });
+    return NextResponse.json({
+      agentId,
+      content: 'OpenClaw Gateway is not running and no ANTHROPIC_API_KEY is set.\n\nStart the gateway with: openclaw gateway\n\nOr set ANTHROPIC_API_KEY in .env.local for direct API fallback.',
+      blockActions: [],
+    });
   }
 
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -99,16 +112,11 @@ async function directApiCall(agentId: string, prompt: string, systemPrompt: stri
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      system: [
-        systemPrompt || 'You are a helpful AI agent.',
-        context ? `\n\nContext:\n${context}` : '',
-        '\nNote: Browser tools are currently unavailable. Answer based on your knowledge, or let the user know you need the agent server running to browse websites.',
-      ].join(''),
+      system: systemPrompt || 'You are a helpful AI agent. Note: OpenClaw Gateway is offline so browser tools are unavailable. Answer from your knowledge.',
       messages: [{ role: 'user', content: prompt }],
     });
 
     const text = response.content[0].type === 'text' ? response.content[0].text : '';
-
     let content = text;
     let blockActions: unknown[] = [];
     const match = text.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
@@ -121,7 +129,6 @@ async function directApiCall(agentId: string, prompt: string, systemPrompt: stri
 
     return NextResponse.json({ agentId, content, blockActions });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ agentId, content: `API error: ${msg}`, blockActions: [] });
+    return NextResponse.json({ agentId, content: `API error: ${e instanceof Error ? e.message : String(e)}`, blockActions: [] });
   }
 }
