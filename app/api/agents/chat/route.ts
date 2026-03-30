@@ -152,7 +152,7 @@ function buildSystemPrompt(body: {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { agentId, messages } = body;
+  const { agentId, messages, agentCapabilities } = body;
 
   const systemPrompt = buildSystemPrompt(body);
 
@@ -163,12 +163,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ agentId, content: 'No message provided.', blockActions: [] });
   }
 
-  // Use direct Anthropic API for full control over agent identity.
-  // OpenClaw Gateway can be re-enabled later when browser tools are needed.
+  // Agents with browser capability use OpenClaw Gateway (has headless Chrome via Browserless).
+  // Other agents use the direct Anthropic API.
+  const hasBrowserCapability = Array.isArray(agentCapabilities) && agentCapabilities.includes('browser');
+
+  if (hasBrowserCapability) {
+    try {
+      const result = await rpcCall('sessions.send', {
+        key: `agent:main:nodnal-${agentId || 'default'}`,
+        message: prompt,
+        systemPrompt,
+        createIfMissing: true,
+        resetSystem: true, // Tell gateway to use our system prompt, not its cached one
+      }) as { text?: string; payloads?: Array<{ text?: string }> };
+
+      const rawContent = result?.text || result?.payloads?.map(p => p.text).join('\n') || JSON.stringify(result);
+
+      // Parse block actions
+      let content = rawContent;
+      let blockActions: unknown[] = [];
+      const match = rawContent.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
+      if (match) {
+        try {
+          blockActions = JSON.parse(match[1]);
+          content = rawContent.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
+        } catch { /* keep raw */ }
+      }
+
+      return NextResponse.json({ agentId, content, blockActions });
+
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      // If gateway fails, fall back to direct API (without browser tools)
+      if (errMsg.includes('ECONNREFUSED') || errMsg.includes('timeout') || errMsg.includes('WebSocket')) {
+        return await callAnthropicApi(agentId, messages, systemPrompt);
+      }
+
+      return NextResponse.json({ agentId, content: `Agent error: ${errMsg}`, blockActions: [] });
+    }
+  }
+
+  // Non-browser agents use direct Anthropic API
   return await callAnthropicApi(agentId, messages, systemPrompt);
 }
 
 // ─── Direct Anthropic API ───────────────────────────────────────────────────
+// Used for non-browser agents, with web_search + web_fetch tools for web access.
 
 async function callAnthropicApi(agentId: string, messages: { role: string; content: string }[], systemPrompt: string) {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -196,10 +237,18 @@ async function callAnthropicApi(agentId: string, messages: { role: string; conte
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
+      tools: [
+        { name: 'web_search', type: 'web_search_20250305' as const },
+        { name: 'web_fetch', type: 'web_fetch_20250910' as const },
+      ],
       messages: chatMessages.length > 0 ? chatMessages : [{ role: 'user' as const, content: '' }],
     });
 
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    // Extract text from response, handling both text and tool_use content blocks
+    const text = response.content
+      .filter(b => b.type === 'text')
+      .map(b => b.type === 'text' ? b.text : '')
+      .join('\n');
     let content = text;
     let blockActions: unknown[] = [];
     const match = text.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
