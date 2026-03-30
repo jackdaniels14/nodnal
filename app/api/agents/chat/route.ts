@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Routes browser-capable agents through OpenClaw Gateway via HTTP bridge.
 // Non-browser agents use direct Anthropic API with web_search + web_fetch.
 
-const BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || 'http://34.67.77.7:18800';
+const BRIDGE_URL = process.env.OPENCLAW_BRIDGE_URL || 'http://34.67.77.7:18850';
 const BRIDGE_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || 'nodnal-openclaw-secret-2026';
 
 async function callOpenClawBridge(sessionKey: string, message: string, systemPrompt?: string): Promise<string> {
