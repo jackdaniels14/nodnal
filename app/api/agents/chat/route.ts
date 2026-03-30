@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
   // Agents with browser capability use OpenClaw Gateway (has headless Chrome via Browserless).
   // Other agents use the direct Anthropic API.
   const hasBrowserCapability = Array.isArray(agentCapabilities) && agentCapabilities.includes('browser');
+  console.log(`[agent-chat] agentId=${agentId} capabilities=${JSON.stringify(agentCapabilities)} browser=${hasBrowserCapability}`);
 
   if (hasBrowserCapability) {
     try {
