@@ -67,8 +67,12 @@ export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Pro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: agent.id,
+          agentName: agent.name,
+          agentDescription: agent.description,
+          agentSystemPrompt: agent.systemPrompt,
+          agentTargetUrl: agent.targetUrl,
+          agentCapabilities: agent.capabilities,
           messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
-          systemPrompt: 'Follow your instructions in AGENTS.md. Check CREDENTIALS.md for any login credentials needed.',
           linkedBlockIds: session.linkedBlockIds,
           workspaceContext: contextBlocks,
         }),

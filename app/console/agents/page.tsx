@@ -29,8 +29,12 @@ export default function AgentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: selectedAgent?.id || 'default',
+          agentName: selectedAgent?.name || 'Default',
+          agentDescription: selectedAgent?.description || 'General-purpose assistant',
+          agentSystemPrompt: selectedAgent?.systemPrompt || '',
+          agentTargetUrl: selectedAgent?.targetUrl,
+          agentCapabilities: selectedAgent?.capabilities || [],
           messages: updated.map(m => ({ role: m.role, content: m.content })),
-          systemPrompt: '',
         }),
       });
       const data = await res.json();

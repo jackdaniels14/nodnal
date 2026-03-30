@@ -115,8 +115,46 @@ function rpcCall(method: string, params: Record<string, unknown> = {}): Promise<
   });
 }
 
+function buildSystemPrompt(body: {
+  agentName?: string;
+  agentDescription?: string;
+  agentSystemPrompt?: string;
+  agentTargetUrl?: string;
+  agentCapabilities?: string[];
+}): string {
+  const name = body.agentName || 'Agent';
+  const parts: string[] = [];
+
+  parts.push(`You are "${name}", an AI agent in the Nodnal workspace.`);
+  parts.push(`IMPORTANT: You are NOT Claude. You are ${name}. Never introduce yourself as Claude or say you are Claude. Always identify as ${name}.`);
+
+  if (body.agentDescription) {
+    parts.push(`Your role: ${body.agentDescription}`);
+  }
+
+  if (body.agentTargetUrl) {
+    parts.push(`Your target system: ${body.agentTargetUrl}`);
+  }
+
+  if (body.agentCapabilities?.length) {
+    parts.push(`Your capabilities: ${body.agentCapabilities.join(', ')}`);
+  }
+
+  if (body.agentSystemPrompt) {
+    parts.push(`\nCustom instructions:\n${body.agentSystemPrompt}`);
+  }
+
+  parts.push(`\nWhen responding, stay in character as ${name}. Be helpful and concise.`);
+  parts.push(`You can create, update, or remove blocks in the workspace by including a <block-actions>[JSON array]</block-actions> tag in your response.`);
+
+  return parts.join('\n');
+}
+
 export async function POST(req: NextRequest) {
-  const { agentId, messages, systemPrompt } = await req.json();
+  const body = await req.json();
+  const { agentId, messages } = body;
+
+  const systemPrompt = buildSystemPrompt(body);
 
   const userMessages = messages.filter((m: { role: string }) => m.role === 'user');
   const prompt = userMessages.length > 0 ? userMessages[userMessages.length - 1].content : '';
@@ -125,43 +163,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ agentId, content: 'No message provided.', blockActions: [] });
   }
 
-  try {
-    const result = await rpcCall('sessions.send', {
-      key: `agent:main:nodnal-${agentId || 'default'}`,
-      message: prompt,
-      createIfMissing: true,
-    }) as { text?: string; payloads?: Array<{ text?: string }> };
-
-    const rawContent = result?.text || result?.payloads?.map(p => p.text).join('\n') || JSON.stringify(result);
-
-    // Parse block actions
-    let content = rawContent;
-    let blockActions: unknown[] = [];
-    const match = rawContent.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
-    if (match) {
-      try {
-        blockActions = JSON.parse(match[1]);
-        content = rawContent.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
-      } catch { /* keep raw */ }
-    }
-
-    return NextResponse.json({ agentId, content, blockActions });
-
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-
-    // Fall back to direct Anthropic API
-    if (errMsg.includes('ECONNREFUSED') || errMsg.includes('timeout') || errMsg.includes('WebSocket')) {
-      return await fallbackDirectApi(agentId, prompt, systemPrompt);
-    }
-
-    return NextResponse.json({ agentId, content: `Agent error: ${errMsg}`, blockActions: [] });
-  }
+  // Use direct Anthropic API for full control over agent identity.
+  // OpenClaw Gateway can be re-enabled later when browser tools are needed.
+  return await callAnthropicApi(agentId, messages, systemPrompt);
 }
 
-// ─── Fallback: Direct Anthropic API ──────────────────────────────────────────
+// ─── Direct Anthropic API ───────────────────────────────────────────────────
 
-async function fallbackDirectApi(agentId: string, prompt: string, systemPrompt: string) {
+async function callAnthropicApi(agentId: string, messages: { role: string; content: string }[], systemPrompt: string) {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json({
@@ -174,12 +183,20 @@ async function fallbackDirectApi(agentId: string, prompt: string, systemPrompt: 
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const client = new Anthropic({ apiKey });
 
+  // Build proper conversation history, only user/assistant roles
+  const chatMessages = messages
+    .filter((m: { role: string }) => m.role === 'user' || m.role === 'assistant')
+    .map((m: { role: string; content: string }) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      system: systemPrompt || 'You are a helpful AI agent. Note: OpenClaw Gateway is offline so browser/web tools are unavailable.',
-      messages: [{ role: 'user', content: prompt }],
+      system: systemPrompt,
+      messages: chatMessages.length > 0 ? chatMessages : [{ role: 'user' as const, content: '' }],
     });
 
     const text = response.content[0].type === 'text' ? response.content[0].text : '';
