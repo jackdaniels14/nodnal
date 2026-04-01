@@ -59,7 +59,8 @@ function buildSystemPrompt(body: {
     parts.push(`\nCustom instructions:\n${body.agentSystemPrompt}`);
   }
 
-  parts.push(`\nWhen responding, stay in character as ${name}. Be helpful and concise.`);
+  parts.push(`\nWhen responding, stay in character as ${name}. Be helpful and concise — Landon reads on iPad.`);
+  parts.push(`Read AGENT_ROLES.md and CREDENTIALS.md in your workspace for your full rules and login credentials.`);
   parts.push(`You can create, update, or remove blocks in the workspace by including a <block-actions>[JSON array]</block-actions> tag in your response.`);
 
   return parts.join('\n');
