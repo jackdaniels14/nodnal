@@ -16,6 +16,8 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [showAgentPicker, setShowAgentPicker] = useState(false);
+  const [agentFilter, setAgentFilter] = useState('');
 
   const { session } = useAgentSession(selectedAgent?.id ?? null);
   const { memories } = useAgentMemory(selectedAgent?.id ?? null);
@@ -92,6 +94,21 @@ export default function AgentsPage() {
     } catch {
       setMessages(prev => [...prev, { role: 'system', content: 'Failed to start background task.', ts: new Date().toISOString() }]);
     }
+  };
+
+  // ── Agent picker ───────────────────────────────────────────────────────────
+  const filteredAgents = agents.filter(a =>
+    !agentFilter || a.name.toLowerCase().startsWith(agentFilter)
+  );
+
+  const selectAgentFromPicker = (agent: AgentDef) => {
+    // Remove the /query from input
+    setInput(prev => prev.replace(/\/\w*$/, ''));
+    setShowAgentPicker(false);
+    // Switch to this agent
+    setSelectedAgent(agent);
+    setMessages([]);
+    setTimeout(() => inputRef.current?.focus(), 100);
   };
 
   // ── Status View ─────────────────────────────────────────────────────────────
@@ -276,15 +293,63 @@ export default function AgentsPage() {
       </div>
 
       {/* Input — iMessage style */}
-      <div className="px-4 py-3 border-t border-gray-800 flex-shrink-0">
+      <div className="px-4 py-3 border-t border-gray-800 flex-shrink-0 relative">
+        {/* Agent picker popup */}
+        {showAgentPicker && filteredAgents.length > 0 && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-50">
+            <div className="px-3 py-2 border-b border-gray-700">
+              <p className="text-xs text-gray-500">Switch to agent</p>
+            </div>
+            {filteredAgents.map(agent => (
+              <button key={agent.id} onClick={() => selectAgentFromPicker(agent)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-700/50 transition-colors text-left">
+                <div className={`w-7 h-7 ${agent.color} rounded-full flex items-center justify-center flex-shrink-0`}>
+                  <span className="text-white text-xs font-bold">{agent.initial}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white font-medium">{agent.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{agent.description?.split('—')[0]?.trim()}</p>
+                </div>
+                {selectedAgent?.id === agent.id && (
+                  <span className="text-xs text-emerald-400">current</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center gap-2 bg-gray-800 rounded-full px-1 border border-gray-700">
           <input
             ref={inputRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            onChange={e => {
+              const val = e.target.value;
+              setInput(val);
+              // Detect /agentname pattern
+              const slashMatch = val.match(/\/(\w*)$/);
+              if (slashMatch) {
+                setAgentFilter(slashMatch[1].toLowerCase());
+                setShowAgentPicker(true);
+              } else {
+                setShowAgentPicker(false);
+              }
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { setShowAgentPicker(false); return; }
+              if (e.key === 'Enter' && !e.shiftKey) {
+                if (showAgentPicker) {
+                  // Select first matching agent
+                  const match = filteredAgents[0];
+                  if (match) { selectAgentFromPicker(match); }
+                  e.preventDefault();
+                  return;
+                }
+                e.preventDefault();
+                send();
+              }
+            }}
             onFocus={() => { setTimeout(() => inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 300); }}
-            placeholder={`Message ${selectedAgent?.name || 'agent'}...`}
+            placeholder={`Message ${selectedAgent?.name || 'agent'}... (type / to switch)`}
             className="flex-1 px-3 py-2.5 bg-transparent text-sm text-gray-100 placeholder-gray-500 focus:outline-none"
           />
           {/* Background task button */}
