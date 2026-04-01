@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { AgentDef } from '@/lib/agents/agent-types';
 import { useAgents, useAgentSession, useAgentMemory } from '@/lib/agents/use-agents';
+import { generateTaskId } from '@/lib/agents/agent-tasks';
 
 type View = 'status' | 'chat';
 
@@ -58,6 +59,39 @@ export default function AgentsPage() {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error communicating with agent.', ts: new Date().toISOString() }]);
     }
     setLoading(false);
+  };
+
+  const sendToBackground = async () => {
+    if (!input.trim() || !selectedAgent) return;
+    const taskId = generateTaskId();
+    const instruction = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, {
+      role: 'system',
+      content: `Sent to ${selectedAgent.name} in background: "${instruction}"`,
+      ts: new Date().toISOString(),
+    }]);
+
+    try {
+      await fetch('/api/agents/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId,
+          agentId: selectedAgent.id,
+          agentName: selectedAgent.name,
+          agentColor: selectedAgent.color,
+          agentInitial: selectedAgent.initial,
+          instruction,
+          agentCapabilities: selectedAgent.capabilities,
+          agentSystemPrompt: selectedAgent.systemPrompt,
+          agentDescription: selectedAgent.description,
+          agentTargetUrl: selectedAgent.targetUrl,
+        }),
+      });
+    } catch {
+      setMessages(prev => [...prev, { role: 'system', content: 'Failed to start background task.', ts: new Date().toISOString() }]);
+    }
   };
 
   // ── Status View ─────────────────────────────────────────────────────────────
@@ -191,26 +225,35 @@ export default function AgentsPage() {
 
         <div className="space-y-2">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[75%] ${m.role === 'user' ? '' : 'flex gap-2'}`}>
-                {m.role !== 'user' && selectedAgent && (
-                  <div className={`w-6 h-6 ${selectedAgent.color} rounded-full flex items-center justify-center flex-shrink-0 mt-1`}>
-                    <span className="text-white text-xs font-bold">{selectedAgent.initial}</span>
-                  </div>
-                )}
-                <div>
-                  <div className={`rounded-2xl px-3.5 py-2 text-sm select-text ${
-                    m.role === 'user'
-                      ? 'bg-emerald-500 text-white rounded-br-md'
-                      : 'bg-gray-800 text-gray-200 rounded-bl-md'
-                  }`}>
-                    <p className="whitespace-pre-wrap">{m.content}</p>
-                  </div>
-                  <p className={`text-xs text-gray-600 mt-0.5 px-1 ${m.role === 'user' ? 'text-right' : ''}`}>
-                    {new Date(m.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                  </p>
+            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : m.role === 'system' ? 'justify-center' : 'justify-start'}`}>
+              {m.role === 'system' ? (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full">
+                  <svg className="w-3 h-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-amber-400">{m.content}</p>
                 </div>
-              </div>
+              ) : (
+                <div className={`max-w-[75%] ${m.role === 'user' ? '' : 'flex gap-2'}`}>
+                  {m.role !== 'user' && selectedAgent && (
+                    <div className={`w-6 h-6 ${selectedAgent.color} rounded-full flex items-center justify-center flex-shrink-0 mt-1`}>
+                      <span className="text-white text-xs font-bold">{selectedAgent.initial}</span>
+                    </div>
+                  )}
+                  <div>
+                    <div className={`rounded-2xl px-3.5 py-2 text-sm select-text ${
+                      m.role === 'user'
+                        ? 'bg-emerald-500 text-white rounded-br-md'
+                        : 'bg-gray-800 text-gray-200 rounded-bl-md'
+                    }`}>
+                      <p className="whitespace-pre-wrap">{m.content}</p>
+                    </div>
+                    <p className={`text-xs text-gray-600 mt-0.5 px-1 ${m.role === 'user' ? 'text-right' : ''}`}>
+                      {new Date(m.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           {loading && (
@@ -243,6 +286,15 @@ export default function AgentsPage() {
             placeholder={`Message ${selectedAgent?.name || 'agent'}...`}
             className="flex-1 px-3 py-2.5 bg-transparent text-sm text-gray-100 placeholder-gray-500 focus:outline-none"
           />
+          {/* Background task button */}
+          <button onClick={sendToBackground} disabled={!input.trim()}
+            title="Send to background — agent works while you browse"
+            className={`p-2 rounded-full transition-colors ${input.trim() ? 'text-amber-400 hover:bg-amber-500/20' : 'text-gray-700'}`}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          {/* Send button */}
           <button onClick={send} disabled={loading || !input.trim()}
             className={`p-2 rounded-full transition-colors ${input.trim() ? 'bg-emerald-500 text-white' : 'text-gray-600'}`}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
