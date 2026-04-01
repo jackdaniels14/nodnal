@@ -262,45 +262,67 @@ export default function RecordsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-700">
-                        <th className="text-left py-2.5 px-4 text-xs text-gray-400 font-medium">Type</th>
                         {selectedType ? (
-                          selectedType.fields.slice(0, 4).map(f => (
-                            <th key={f.id} className="text-left py-2.5 px-4 text-xs text-gray-400 font-medium">{f.name}</th>
-                          ))
+                          selectedType.fields
+                            .filter(f => !['boolean', 'richtext'].includes(f.type))
+                            .slice(0, 6)
+                            .map(f => (
+                              <th key={f.id} className="text-left py-2.5 px-4 text-xs text-gray-400 font-medium whitespace-nowrap">{f.name}</th>
+                            ))
                         ) : (
                           <>
+                            <th className="text-left py-2.5 px-4 text-xs text-gray-400 font-medium">Type</th>
                             <th className="text-left py-2.5 px-4 text-xs text-gray-400 font-medium">Summary</th>
                             <th className="text-left py-2.5 px-4 text-xs text-gray-400 font-medium">Created</th>
                           </>
                         )}
-                        <th className="text-left py-2.5 px-4 text-xs text-gray-400 font-medium">Source</th>
-                        <th className="w-16" />
+                        <th className="w-10" />
                       </tr>
                     </thead>
                     <tbody>
                       {filteredRecords.map(rec => {
                         const recType = types.find(t => t.id === rec.typeId);
-                        const agent = rec.createdBy && rec.createdBy !== 'manual' ? agents.find(a => a.id === rec.createdBy) : null;
+                        const visibleFields = selectedType
+                          ? selectedType.fields.filter(f => !['boolean', 'richtext'].includes(f.type)).slice(0, 6)
+                          : null;
                         return (
-                          <tr key={rec.id} className="border-b border-gray-700/40 hover:bg-gray-700/20">
-                            <td className="py-2.5 px-4">
-                              {recType && (
-                                <div className="flex items-center gap-1.5">
-                                  <div className={`w-5 h-5 ${recType.color} rounded flex items-center justify-center`}>
-                                    <span className="text-white" style={{ fontSize: '8px' }}>{recType.icon}</span>
-                                  </div>
-                                  <span className="text-xs text-gray-400">{recType.name}</span>
-                                </div>
-                              )}
-                            </td>
-                            {selectedType ? (
-                              selectedType.fields.slice(0, 4).map(f => (
-                                <td key={f.id} className="py-2.5 px-4 text-gray-300 text-xs truncate max-w-[180px]">
-                                  {String(rec.data[f.id] ?? '—')}
+                          <tr key={rec.id} className="border-b border-gray-700/40 hover:bg-gray-700/20 cursor-pointer"
+                            onClick={() => {
+                              if (recType) window.location.href = `/console/records/${recType.id}?view=${rec.id}`;
+                            }}>
+                            {visibleFields ? (
+                              visibleFields.map((f, i) => (
+                                <td key={f.id} className={`py-2.5 px-4 text-xs truncate max-w-[200px] ${i === 0 ? 'font-medium' : ''}`}>
+                                  {i === 0 && recType ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        String(rec.data[f.id]) === 'Prospect' ? 'bg-amber-500/15 text-amber-400' :
+                                        String(rec.data[f.id]) === 'Active' ? 'bg-emerald-500/15 text-emerald-400' :
+                                        String(rec.data[f.id]) === 'Inactive' ? 'bg-gray-500/15 text-gray-400' :
+                                        'bg-red-500/15 text-red-400'
+                                      }`}>{String(rec.data[f.id] ?? '—')}</span>
+                                    </div>
+                                  ) : f.id === 'f-number' ? (
+                                    <span className="text-emerald-400 font-mono">{String(rec.data[f.id] ?? '—')}</span>
+                                  ) : f.type === 'number' ? (
+                                    <span className="text-gray-200">{rec.data[f.id] != null ? String(rec.data[f.id]) : '—'}</span>
+                                  ) : (
+                                    <span className="text-gray-300">{String(rec.data[f.id] ?? '—')}</span>
+                                  )}
                                 </td>
                               ))
                             ) : (
                               <>
+                                <td className="py-2.5 px-4">
+                                  {recType && (
+                                    <div className="flex items-center gap-1.5">
+                                      <div className={`w-5 h-5 ${recType.color} rounded flex items-center justify-center`}>
+                                        <span className="text-white" style={{ fontSize: '8px' }}>{recType.icon}</span>
+                                      </div>
+                                      <span className="text-xs text-gray-400">{recType.name}</span>
+                                    </div>
+                                  )}
+                                </td>
                                 <td className="py-2.5 px-4 text-gray-300 text-xs truncate max-w-[250px]">
                                   {Object.values(rec.data).filter(v => typeof v === 'string').slice(0, 2).join(' — ') || '—'}
                                 </td>
@@ -309,17 +331,8 @@ export default function RecordsPage() {
                                 </td>
                               </>
                             )}
-                            <td className="py-2.5 px-4 text-xs">
-                              {agent ? (
-                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${agent.color} bg-opacity-20`}>
-                                  <span className="text-xs">{agent.initial}</span>
-                                </span>
-                              ) : (
-                                <span className="text-gray-500">Manual</span>
-                              )}
-                            </td>
                             <td className="py-2.5 px-4">
-                              <button onClick={async () => { if (confirm('Delete this record?')) { await removeRec(rec.id); } }}
+                              <button onClick={async (e) => { e.stopPropagation(); if (confirm('Delete this record?')) { await removeRec(rec.id); } }}
                                 className="p-1 text-gray-600 hover:text-red-400 transition-colors">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                               </button>
