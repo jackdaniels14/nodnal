@@ -28,7 +28,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
   if (!user) return null;
 
   return (
-    <div className="flex h-screen bg-gray-900 overflow-hidden">
+    <div className="flex h-[100dvh] bg-gray-900 overflow-hidden">
       {sidebarOpen && (
         <div className="fixed inset-0 z-20 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}

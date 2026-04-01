@@ -206,6 +206,7 @@ export default function AccountDetailView({ typeDef, record }: { typeDef: Record
                 value={noteInput}
                 onChange={e => setNoteInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddNote(); }}
+                onFocus={e => { setTimeout(() => (e.target as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'end' }), 300); }}
                 placeholder="Add a note..."
                 className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />

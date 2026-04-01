@@ -283,6 +283,7 @@ export default function AgentsPage() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            onFocus={() => { setTimeout(() => inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 300); }}
             placeholder={`Message ${selectedAgent?.name || 'agent'}...`}
             className="flex-1 px-3 py-2.5 bg-transparent text-sm text-gray-100 placeholder-gray-500 focus:outline-none"
           />
