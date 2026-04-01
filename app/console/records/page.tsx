@@ -296,7 +296,7 @@ export default function RecordsPage() {
                                   {i === 0 && recType ? (
                                     <div className="flex items-center gap-2">
                                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        String(rec.data[f.id]) === 'Prospect' ? 'bg-amber-500/15 text-amber-400' :
+                                        String(rec.data[f.id]) === 'Prospect' ? 'bg-sky-500/15 text-sky-400' :
                                         String(rec.data[f.id]) === 'Active' ? 'bg-emerald-500/15 text-emerald-400' :
                                         String(rec.data[f.id]) === 'Inactive' ? 'bg-gray-500/15 text-gray-400' :
                                         'bg-red-500/15 text-red-400'
