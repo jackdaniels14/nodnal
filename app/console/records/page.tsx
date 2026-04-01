@@ -95,6 +95,13 @@ export default function RecordsPage() {
   const [agents, setAgents] = useState<AgentDef[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
 
+  // Auto-select the first type when types load
+  useEffect(() => {
+    if (types.length > 0 && !selectedTypeId) {
+      setSelectedTypeId(types[0].id);
+    }
+  }, [types, selectedTypeId]);
+
   // Record type creation
   const [creating, setCreating] = useState(false);
   const [editingType, setEditingType] = useState<RecordTypeDef | null>(null);
