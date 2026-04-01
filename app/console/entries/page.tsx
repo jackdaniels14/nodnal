@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { RecordTypeDef, DataRecord, FieldDef, FieldType } from '@/lib/records/record-types';
 import { useRecordTypes, useRecords, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/use-records';
+import AccountDetailView from '@/components/records/AccountDetailView';
 
 const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'text', label: 'Text' }, { value: 'number', label: 'Number' }, { value: 'currency', label: 'Currency' },
@@ -15,6 +16,11 @@ export default function EntriesPage() {
   const { types, loading: typesLoading, save: saveRecordType, remove: removeRecordType } = useRecordTypes();
   const { records, loading: recordsLoading, save: saveRecordHook, remove: removeRecordHook } = useRecords();
   const [selectedType, setSelectedType] = useState<string | null>(null);
+
+  // Auto-select first type
+  useEffect(() => {
+    if (types.length > 0 && !selectedType) setSelectedType(types[0].id);
+  }, [types, selectedType]);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'list' | 'create-type' | 'create-record' | 'view'>('list');
   const [viewRecord, setViewRecord] = useState<DataRecord | null>(null);
@@ -118,20 +124,17 @@ export default function EntriesPage() {
   if (view === 'view' && viewRecord) {
     const recType = types.find(t => t.id === viewRecord.typeId);
     return (
-      <div className="p-6 max-w-xl">
+      <div className="p-6">
         <div className="flex items-center gap-2 mb-4">
           <button onClick={() => { setView('list'); setViewRecord(null); }} className="text-gray-400 hover:text-white"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button>
-          <h2 className="text-sm font-semibold text-white">{recType?.name || 'Entry'}</h2>
+          <h2 className="text-sm font-semibold text-white">{String(viewRecord.data['f-customer'] ?? recType?.name ?? 'Entry')}</h2>
+          <span className="text-xs text-emerald-400 font-mono">{String(viewRecord.data['f-number'] ?? '')}</span>
         </div>
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-3">
-          {recType?.fields.map(f => (
-            <div key={f.id} className="flex items-baseline gap-3">
-              <span className="text-xs text-gray-500 w-28 flex-shrink-0">{f.name}</span>
-              <span className="text-sm text-white">{String(viewRecord.data[f.id] ?? '—')}</span>
-            </div>
-          ))}
-          <p className="text-xs text-gray-600 pt-2 border-t border-gray-700">Created {new Date(viewRecord.createdAt).toLocaleDateString()} · {viewRecord.createdBy === 'manual' ? 'Manual' : `Agent: ${viewRecord.createdBy}`}</p>
-        </div>
+        {recType ? (
+          <AccountDetailView typeDef={recType} record={viewRecord} />
+        ) : (
+          <p className="text-gray-500 text-sm">Record type not found.</p>
+        )}
       </div>
     );
   }
