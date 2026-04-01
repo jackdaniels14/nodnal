@@ -104,6 +104,32 @@ export async function deleteContact(recordId: string, contactId: string): Promis
   await deleteDoc(doc(contactsCol(recordId), contactId));
 }
 
+// ─── Account Notes (sub-collection) ─────────────────────────────────────────
+
+export interface AccountNote {
+  id: string;
+  content: string;
+  author: string;       // user name, agent name, or 'system'
+  authorType: 'user' | 'agent' | 'system';
+  createdAt: string;
+}
+
+const notesCol = (recordId: string) => collection(db, 'records', recordId, 'notes');
+
+export async function getNotes(recordId: string): Promise<AccountNote[]> {
+  const snap = await getDocs(query(notesCol(recordId), orderBy('createdAt', 'desc')));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }) as AccountNote);
+}
+
+export async function saveNote(recordId: string, note: AccountNote): Promise<void> {
+  const { id, ...data } = note;
+  await setDoc(doc(notesCol(recordId), id), data);
+}
+
+export async function deleteNote(recordId: string, noteId: string): Promise<void> {
+  await deleteDoc(doc(notesCol(recordId), noteId));
+}
+
 // ─── Batch Import ───────────────────────────────────────────────────────────
 
 export async function batchSaveRecords(records: DataRecord[]): Promise<void> {

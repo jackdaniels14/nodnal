@@ -5,7 +5,7 @@ import { RecordTypeDef, DataRecord } from './record-types';
 import * as store from './firestore-store';
 
 export { generateTypeId, generateRecordId, generateFieldId } from './firestore-store';
-export type { Contact } from './firestore-store';
+export type { Contact, AccountNote } from './firestore-store';
 
 // ─── Hook: useRecordTypes ───────────────────────────────────────────────────
 
@@ -94,6 +94,37 @@ export function useContacts(recordId: string | null) {
   }, [recordId, refresh]);
 
   return { contacts, loading, refresh, save, remove };
+}
+
+// ─── Hook: useNotes ─────────────────────────────────────────────────────────
+
+export function useNotes(recordId: string | null) {
+  const [notes, setNotes] = useState<store.AccountNote[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (!recordId) { setNotes([]); setLoading(false); return; }
+    setLoading(true);
+    const data = await store.getNotes(recordId);
+    setNotes(data);
+    setLoading(false);
+  }, [recordId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const save = useCallback(async (note: store.AccountNote) => {
+    if (!recordId) return;
+    await store.saveNote(recordId, note);
+    await refresh();
+  }, [recordId, refresh]);
+
+  const remove = useCallback(async (noteId: string) => {
+    if (!recordId) return;
+    await store.deleteNote(recordId, noteId);
+    await refresh();
+  }, [recordId, refresh]);
+
+  return { notes, loading, refresh, save, remove };
 }
 
 // ─── Direct async helpers (for one-off calls) ──────────────────────────────

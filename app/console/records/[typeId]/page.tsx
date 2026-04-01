@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import { RecordTypeDef, DataRecord as RecordData, FieldDef } from '@/lib/records/record-types';
-import { useRecords, useRecordTypes, generateRecordId } from '@/lib/records/use-records';
+import { useRecords, useRecordTypes, useContacts, useNotes, generateRecordId } from '@/lib/records/use-records';
+import type { Contact, AccountNote } from '@/lib/records/use-records';
 
 // ─── Record Form ─────────────────────────────────────────────────────────────
 
@@ -79,68 +80,253 @@ function RecordForm({ typeDef, record, onSave, onCancel }: {
   );
 }
 
-// ─── Record Viewer (template layout) ─────────────────────────────────────────
+// ─── Account Detail View (3-panel layout) ───────────────────────────────────
 
-function RecordViewer({ typeDef, record }: { typeDef: RecordTypeDef; record: RecordData }) {
-  const template = typeDef.layoutTemplate;
+function AccountDetailView({ typeDef, record }: { typeDef: RecordTypeDef; record: RecordData }) {
+  const { contacts } = useContacts(record.id);
+  const { notes, save: saveNote } = useNotes(record.id);
+  const [noteInput, setNoteInput] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  if (!template || template.blocks.length === 0) {
-    // Fallback: simple field list
-    return (
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-3">
-        {typeDef.fields.map(field => (
-          <div key={field.id} className="flex items-baseline gap-3">
-            <span className="text-xs text-gray-500 w-24 flex-shrink-0">{field.name}</span>
-            <span className="text-sm text-white">{String(record.data[field.id] ?? '—')}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [notes]);
 
-  // Render using template blocks
+  const d = record.data;
+  const getField = (id: string) => String(d[id] ?? '—');
+  const getBool = (id: string) => d[id] ? 'Yes' : 'No';
+
+  const handleAddNote = async () => {
+    if (!noteInput.trim()) return;
+    await saveNote({
+      id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      content: noteInput.trim(),
+      author: 'You',
+      authorType: 'user',
+      createdAt: new Date().toISOString(),
+    });
+    setNoteInput('');
+  };
+
+  // Summarize notes for the right panel
+  const noteSummaryParts: string[] = [];
+  const userNotes = notes.filter(n => n.authorType === 'user');
+  const agentNotes = notes.filter(n => n.authorType === 'agent');
+  if (userNotes.length > 0) noteSummaryParts.push(`${userNotes.length} note${userNotes.length > 1 ? 's' : ''} from you`);
+  if (agentNotes.length > 0) noteSummaryParts.push(`${agentNotes.length} note${agentNotes.length > 1 ? 's' : ''} from agents`);
+
   return (
-    <div className="grid grid-cols-12 gap-3">
-      {template.blocks.map(tb => {
-        const resolveValue = (mapping: string): unknown => {
-          if (mapping.startsWith('"') && mapping.endsWith('"')) return mapping.slice(1, -1);
-          return record.data[mapping] ?? '—';
-        };
+    <div className="space-y-4">
+      {/* ── Top Row: General Info + Contacts ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        const style = {
-          gridColumn: `${tb.position.x + 1} / span ${tb.position.w}`,
-          gridRow: `${tb.position.y + 1} / span ${tb.position.h}`,
-        };
+        {/* ── Top Left: General Info ── */}
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">General Information</h3>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <div>
+              <span className="text-xs text-gray-500">State</span>
+              <p className="text-sm mt-0.5">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                  getField('f-state') === 'Prospect' ? 'bg-sky-500/15 text-sky-400' :
+                  getField('f-state') === 'Active' ? 'bg-emerald-500/15 text-emerald-400' :
+                  getField('f-state') === 'Inactive' ? 'bg-gray-500/15 text-gray-400' :
+                  'bg-red-500/15 text-red-400'
+                }`}>{getField('f-state')}</span>
+              </p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">Account Number</span>
+              <p className="text-sm text-emerald-400 font-mono mt-0.5">{getField('f-number')}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">Customer</span>
+              <p className="text-sm text-white mt-0.5">{getField('f-customer')}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">City</span>
+              <p className="text-sm text-gray-300 mt-0.5">{getField('f-city')}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">Unit Count</span>
+              <p className="text-sm text-white font-semibold mt-0.5">{getField('f-units')}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">Rep</span>
+              <p className="text-sm text-gray-300 mt-0.5">{getField('f-rep')}</p>
+            </div>
+            <div className="col-span-2">
+              <span className="text-xs text-gray-500">Term</span>
+              <p className="text-sm text-gray-300 mt-0.5">{getField('f-term')}</p>
+            </div>
+            <div className="col-span-2">
+              <span className="text-xs text-gray-500">Billing Method</span>
+              <p className="text-sm text-gray-300 mt-0.5">{getField('f-billing')}</p>
+            </div>
+          </div>
 
-        return (
-          <div key={tb.id} className="bg-gray-800 border border-gray-700 rounded-xl p-3" style={style}>
-            <p className="text-xs text-gray-500 mb-2">{tb.title}</p>
-            {tb.blockType === 'stat' && (
-              <div>
-                <p className="text-2xl font-bold text-white">{String(resolveValue(tb.fieldMapping.statValue ?? ''))}</p>
-                {tb.fieldMapping.statLabel && <p className="text-xs text-gray-400 mt-1">{String(resolveValue(tb.fieldMapping.statLabel))}</p>}
+          {/* Flags */}
+          <div className="mt-4 pt-4 border-t border-gray-700">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'f-master', label: 'Master Account' },
+                { id: 'f-cash', label: 'Cash Account' },
+                { id: 'f-exempt-fees', label: 'Exempt Fees' },
+                { id: 'f-require-po', label: 'Require PO' },
+                { id: 'f-group-line', label: 'Group Line Items' },
+                { id: 'f-trip-charge', label: 'Trip Charge' },
+                { id: 'f-am-installs', label: 'AM Installs' },
+                { id: 'f-rep-review', label: 'Rep Review' },
+              ].map(flag => (
+                <span key={flag.id} className={`px-2 py-0.5 rounded text-xs ${
+                  d[flag.id] ? 'bg-emerald-500/15 text-emerald-400' : 'bg-gray-700 text-gray-500'
+                }`}>
+                  {flag.label}: {getBool(flag.id)}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Top Right: Contacts & Management ── */}
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Contacts & Management</h3>
+
+          {/* Address & Management */}
+          <div className="space-y-3 mb-5">
+            <div>
+              <span className="text-xs text-gray-500">Physical Address</span>
+              <p className="text-sm text-white mt-0.5">{getField('f-address')}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">Management Company</span>
+              <p className="text-sm text-white mt-0.5">{getField('f-mgmt')}</p>
+            </div>
+          </div>
+
+          {/* Contacts list */}
+          <div className="border-t border-gray-700 pt-4">
+            <h4 className="text-xs text-gray-500 mb-3">Key Contacts</h4>
+            {contacts.length === 0 ? (
+              <p className="text-xs text-gray-600 italic">No contacts added yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {contacts.map(c => (
+                  <div key={c.id} className="flex items-start gap-3 p-2.5 bg-gray-700/30 rounded-lg">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      c.state === 'Active' ? 'bg-emerald-500/20' : 'bg-gray-600/30'
+                    }`}>
+                      <span className="text-xs font-bold text-gray-300">{c.name?.charAt(0) || '?'}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white font-medium">{c.name}</span>
+                        <span className="text-xs text-gray-500">{c.contactType}</span>
+                      </div>
+                      {c.email && (
+                        <a href={`mailto:${c.email}`} className="text-xs text-emerald-400 hover:underline block truncate">{c.email}</a>
+                      )}
+                      <div className="flex gap-3 mt-0.5">
+                        {c.phone && <span className="text-xs text-gray-400">{c.phone}</span>}
+                        {c.cell && <span className="text-xs text-gray-400">{c.cell}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-            {tb.blockType === 'text' && (
-              <p className="text-sm text-gray-300 whitespace-pre-wrap">{String(resolveValue(tb.fieldMapping.textContent ?? ''))}</p>
-            )}
-            {tb.blockType === 'list' && (() => {
-              const items = resolveValue(tb.fieldMapping.listItems ?? '') as string[] | string;
-              const list = Array.isArray(items) ? items : [];
-              return (
-                <ul className="space-y-1">
-                  {list.map((item, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm text-gray-300">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full flex-shrink-0" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              );
-            })()}
           </div>
-        );
-      })}
+
+          {/* Notes from record */}
+          {(getField('f-installer-notes') !== '—' || getField('f-internal-notes') !== '—') && (
+            <div className="border-t border-gray-700 pt-4 mt-4">
+              {getField('f-installer-notes') !== '—' && (
+                <div className="mb-3">
+                  <span className="text-xs text-gray-500">Installer Notes</span>
+                  <p className="text-xs text-gray-300 mt-1 whitespace-pre-wrap">{getField('f-installer-notes')}</p>
+                </div>
+              )}
+              {getField('f-internal-notes') !== '—' && (
+                <div>
+                  <span className="text-xs text-gray-500">Internal Notes</span>
+                  <p className="text-xs text-gray-300 mt-1 whitespace-pre-wrap">{getField('f-internal-notes')}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Bottom: AI Notes ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Notes Chat */}
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex flex-col" style={{ minHeight: '300px' }}>
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Account Notes</h3>
+          <p className="text-xs text-gray-600 mb-3">Add notes about this account. AI agents can also contribute. Type <code className="text-emerald-400">/agentname</code> to tag an agent.</p>
+
+          <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 mb-3 max-h-64">
+            {notes.length === 0 && (
+              <p className="text-xs text-gray-600 italic pt-4 text-center">No notes yet. Add one below.</p>
+            )}
+            {[...notes].reverse().map(note => (
+              <div key={note.id} className={`text-xs rounded-lg px-3 py-2 max-w-[85%] ${
+                note.authorType === 'user'
+                  ? 'bg-emerald-600/20 text-emerald-100 ml-auto'
+                  : note.authorType === 'agent'
+                  ? 'bg-violet-600/20 text-violet-100'
+                  : 'bg-gray-700 text-gray-300'
+              }`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="font-medium">{note.author}</span>
+                  <span className="text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p className="whitespace-pre-wrap">{note.content}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              value={noteInput}
+              onChange={e => setNoteInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddNote(); }}
+              placeholder="Add a note..."
+              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+            <button onClick={handleAddNote}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded-lg transition-colors">
+              Add
+            </button>
+          </div>
+        </div>
+
+        {/* Notes Summary */}
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Summary</h3>
+          {notes.length === 0 ? (
+            <p className="text-xs text-gray-600 italic">Notes will be summarized here as they are added.</p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-400">{noteSummaryParts.join(', ') || 'No notes'}</p>
+              <div className="space-y-2">
+                {notes.slice(0, 10).map(note => (
+                  <div key={note.id} className="flex items-start gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
+                      note.authorType === 'user' ? 'bg-emerald-500' :
+                      note.authorType === 'agent' ? 'bg-violet-500' : 'bg-gray-500'
+                    }`} />
+                    <div>
+                      <p className="text-xs text-gray-300">{note.content.slice(0, 120)}{note.content.length > 120 ? '...' : ''}</p>
+                      <p className="text-xs text-gray-600 mt-0.5">{note.author} — {new Date(note.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -149,11 +335,21 @@ function RecordViewer({ typeDef, record }: { typeDef: RecordTypeDef; record: Rec
 
 export default function RecordTypePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const typeId = params.typeId as string;
+  const viewRecordId = searchParams.get('view');
   const { types, loading: typesLoading } = useRecordTypes();
   const { records, loading: recordsLoading, save: saveRecord, remove: removeRecord } = useRecords(typeId);
-  const [view, setView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
+  const [view, setView] = useState<'list' | 'create' | 'edit' | 'view'>(viewRecordId ? 'view' : 'list');
   const [selectedRecord, setSelectedRecord] = useState<RecordData | null>(null);
+
+  // Auto-select record from URL param
+  useEffect(() => {
+    if (viewRecordId && records.length > 0 && !selectedRecord) {
+      const rec = records.find(r => r.id === viewRecordId);
+      if (rec) { setSelectedRecord(rec); setView('view'); }
+    }
+  }, [viewRecordId, records, selectedRecord]);
 
   const typeDef = types.find(t => t.id === typeId) ?? null;
 
@@ -201,7 +397,7 @@ export default function RecordTypePage() {
           <h1 className="text-lg font-semibold text-white">{primaryField ? String(selectedRecord.data[primaryField.id] ?? 'Untitled') : 'Record'}</h1>
           <button onClick={() => { setView('edit'); }} className="ml-auto px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition-colors">Edit</button>
         </div>
-        <RecordViewer typeDef={typeDef} record={selectedRecord} />
+        <AccountDetailView typeDef={typeDef} record={selectedRecord} />
       </div>
     );
   }
