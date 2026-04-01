@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { RecordTypeDef, DataRecord, FieldDef, FieldType } from '@/lib/records/record-types';
 import { useRecordTypes, useRecords, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/use-records';
+import { stateColor } from '@/lib/records/state-colors';
 import { getAgents } from '@/lib/agents/agent-registry';
 import { AgentDef } from '@/lib/agents/agent-types';
 
@@ -302,12 +303,7 @@ export default function RecordsPage() {
                                 <td key={f.id} className={`py-2.5 px-4 text-xs truncate max-w-[200px] ${i === 0 ? 'font-medium' : ''}`}>
                                   {i === 0 && recType ? (
                                     <div className="flex items-center gap-2">
-                                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        String(rec.data[f.id]) === 'Prospect' ? 'bg-sky-500/15 text-sky-400' :
-                                        String(rec.data[f.id]) === 'Active' ? 'bg-emerald-500/15 text-emerald-400' :
-                                        String(rec.data[f.id]) === 'Inactive' ? 'bg-gray-500/15 text-gray-400' :
-                                        'bg-red-500/15 text-red-400'
-                                      }`}>{String(rec.data[f.id] ?? '—')}</span>
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${stateColor(String(rec.data[f.id] ?? ''))}`}>{String(rec.data[f.id] ?? '—')}</span>
                                     </div>
                                   ) : f.id === 'f-number' ? (
                                     <span className="text-emerald-400 font-mono">{String(rec.data[f.id] ?? '—')}</span>

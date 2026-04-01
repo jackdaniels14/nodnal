@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { RecordTypeDef, DataRecord } from '@/lib/records/record-types';
 import { useContacts, useNotes } from '@/lib/records/use-records';
+import { stateColor } from '@/lib/records/state-colors';
 
 export default function AccountDetailView({ typeDef, record }: { typeDef: RecordTypeDef; record: DataRecord }) {
   const { contacts } = useContacts(record.id);
@@ -48,12 +49,7 @@ export default function AccountDetailView({ typeDef, record }: { typeDef: Record
             <div>
               <span className="text-xs text-gray-500">State</span>
               <p className="text-sm mt-0.5">
-                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                  getField('f-state') === 'Prospect' ? 'bg-sky-500/15 text-sky-400' :
-                  getField('f-state') === 'Active' ? 'bg-emerald-500/15 text-emerald-400' :
-                  getField('f-state') === 'Inactive' ? 'bg-gray-500/15 text-gray-400' :
-                  'bg-red-500/15 text-red-400'
-                }`}>{getField('f-state')}</span>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${stateColor(getField('f-state'))}`}>{getField('f-state')}</span>
               </p>
             </div>
             <div>
@@ -175,58 +171,59 @@ export default function AccountDetailView({ typeDef, record }: { typeDef: Record
         </div>
       </div>
 
-      {/* Bottom: AI Notes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Notes Chat */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex flex-col" style={{ minHeight: '300px' }}>
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Account Notes</h3>
-          <p className="text-xs text-gray-600 mb-3">Add notes about this account. AI agents can also contribute. Type <code className="text-emerald-400">/agentname</code> to tag an agent.</p>
+      {/* Bottom: Account Notes (single block with chat + summary) */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Account Notes & Summary</h3>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 mb-3 max-h-64">
-            {notes.length === 0 && (
-              <p className="text-xs text-gray-600 italic pt-4 text-center">No notes yet. Add one below.</p>
-            )}
-            {[...notes].reverse().map(note => (
-              <div key={note.id} className={`text-xs rounded-lg px-3 py-2 max-w-[85%] ${
-                note.authorType === 'user'
-                  ? 'bg-emerald-600/20 text-emerald-100 ml-auto'
-                  : note.authorType === 'agent'
-                  ? 'bg-violet-600/20 text-violet-100'
-                  : 'bg-gray-700 text-gray-300'
-              }`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="font-medium">{note.author}</span>
-                  <span className="text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+          {/* Notes Chat */}
+          <div className="flex flex-col" style={{ minHeight: '250px' }}>
+            <p className="text-xs text-gray-600 mb-3">Add notes about this account. AI agents can also contribute. Type <code className="text-emerald-400">/agentname</code> to tag an agent.</p>
+
+            <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 mb-3 max-h-64">
+              {notes.length === 0 && (
+                <p className="text-xs text-gray-600 italic pt-4 text-center">No notes yet. Add one below.</p>
+              )}
+              {[...notes].reverse().map(note => (
+                <div key={note.id} className={`text-xs rounded-lg px-3 py-2 max-w-[85%] ${
+                  note.authorType === 'user'
+                    ? 'bg-emerald-600/20 text-emerald-100 ml-auto'
+                    : note.authorType === 'agent'
+                    ? 'bg-violet-600/20 text-violet-100'
+                    : 'bg-gray-700 text-gray-300'
+                }`}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="font-medium">{note.author}</span>
+                    <span className="text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap">{note.content}</p>
                 </div>
-                <p className="whitespace-pre-wrap">{note.content}</p>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                value={noteInput}
+                onChange={e => setNoteInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddNote(); }}
+                placeholder="Add a note..."
+                className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <button onClick={handleAddNote}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded-lg transition-colors">
+                Add
+              </button>
+            </div>
           </div>
 
-          <div className="flex gap-2">
-            <input
-              value={noteInput}
-              onChange={e => setNoteInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAddNote(); }}
-              placeholder="Add a note..."
-              className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            />
-            <button onClick={handleAddNote}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded-lg transition-colors">
-              Add
-            </button>
-          </div>
-        </div>
-
-        {/* Notes Summary */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Summary</h3>
-          {notes.length === 0 ? (
-            <p className="text-xs text-gray-600 italic">Notes will be summarized here as they are added.</p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-xs text-gray-400">{noteSummaryParts.join(', ') || 'No notes'}</p>
+          {/* Summary sidebar */}
+          <div className="border-l border-gray-700 pl-4">
+            <h4 className="text-xs text-gray-500 font-medium mb-3">Summary</h4>
+            {notes.length === 0 ? (
+              <p className="text-xs text-gray-600 italic">Notes will be summarized here.</p>
+            ) : (
               <div className="space-y-2">
+                <p className="text-xs text-gray-400 mb-2">{noteSummaryParts.join(', ')}</p>
                 {notes.slice(0, 10).map(note => (
                   <div key={note.id} className="flex items-start gap-2">
                     <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
@@ -234,14 +231,14 @@ export default function AccountDetailView({ typeDef, record }: { typeDef: Record
                       note.authorType === 'agent' ? 'bg-violet-500' : 'bg-gray-500'
                     }`} />
                     <div>
-                      <p className="text-xs text-gray-300">{note.content.slice(0, 120)}{note.content.length > 120 ? '...' : ''}</p>
+                      <p className="text-xs text-gray-300">{note.content.slice(0, 80)}{note.content.length > 80 ? '...' : ''}</p>
                       <p className="text-xs text-gray-600 mt-0.5">{note.author} — {new Date(note.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

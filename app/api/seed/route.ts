@@ -7,7 +7,7 @@ import db from '@/lib/firestore';
 const PROPERTY_TYPE_ID = 'rtype-property-account';
 
 const FIELDS = [
-  { id: 'f-state', name: 'State', type: 'select' as const, options: ['Prospect', 'Active', 'Inactive', 'Lost'], required: true },
+  { id: 'f-state', name: 'State', type: 'select' as const, options: ['Prospect', 'Pricing Presented', 'At Risk', 'Ordering', 'Inactive', 'Lost'], required: true },
   { id: 'f-number', name: 'Account Number', type: 'text' as const, required: true },
   { id: 'f-customer', name: 'Customer', type: 'text' as const, required: true },
   { id: 'f-mgmt', name: 'Management Company', type: 'text' as const },

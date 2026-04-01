@@ -145,7 +145,6 @@ export default function EntriesPage() {
       <div className="px-6 pt-4 pb-3 flex items-center justify-between flex-shrink-0">
         <h1 className="text-lg font-semibold text-white">Entries</h1>
         <div className="flex gap-2">
-          <button onClick={() => setView('create-type')} className="px-3 py-1.5 text-xs text-gray-400 border border-gray-600 hover:border-gray-500 hover:text-white rounded-lg transition-colors">New Type</button>
           {selectedType && (
             <button onClick={() => { setRecordData({}); setView('create-record'); }} className="px-3 py-1.5 text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/30 transition-colors">New Entry</button>
           )}
