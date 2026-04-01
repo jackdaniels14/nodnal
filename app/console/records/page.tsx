@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { RecordTypeDef, DataRecord, FieldDef, FieldType } from '@/lib/records/record-types';
-import { getRecordTypes, saveRecordType, deleteRecordType, getRecordsByType, getAllRecords, saveRecord, deleteRecord, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/record-store';
+import { useRecordTypes, useRecords, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/use-records';
 import { getAgents } from '@/lib/agents/agent-registry';
 import { AgentDef } from '@/lib/agents/agent-types';
 
@@ -90,8 +90,8 @@ export default function RecordsPage() {
   const [filters, setFilters] = useState<Filters>(emptyFilters);
 
   // Data
-  const [types, setTypes] = useState<RecordTypeDef[]>([]);
-  const [allRecords, setAllRecords] = useState<DataRecord[]>([]);
+  const { types, save: saveType, remove: removeType } = useRecordTypes();
+  const { records: allRecords, save: saveRec, remove: removeRec, refresh: refreshRecords } = useRecords();
   const [agents, setAgents] = useState<AgentDef[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
 
@@ -110,8 +110,6 @@ export default function RecordsPage() {
   const [recordData, setRecordData] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
-    setTypes(getRecordTypes());
-    setAllRecords(getAllRecords());
     setAgents(getAgents());
   }, []);
 
@@ -146,27 +144,25 @@ export default function RecordsPage() {
     setTypeName(''); setTypeIcon(''); setTypeColor(COLORS[0]); setTypeFields([]); setNewFieldName(''); setEditingType(null);
   };
 
-  const handleSaveType = () => {
+  const handleSaveType = async () => {
     if (!typeName.trim()) return;
     const typeDef: RecordTypeDef = {
       id: editingType?.id ?? generateTypeId(), name: typeName.trim(),
       icon: typeIcon || typeName[0]?.toUpperCase() || 'R', color: typeColor, fields: typeFields,
       layoutTemplate: editingType?.layoutTemplate, createdAt: editingType?.createdAt ?? new Date().toISOString(),
     };
-    saveRecordType(typeDef);
-    setTypes(getRecordTypes());
+    await saveType(typeDef);
     resetTypeForm();
     setCreating(false);
   };
 
-  const handleSaveRecord = () => {
+  const handleSaveRecord = async () => {
     if (!selectedTypeId) return;
     const rec: DataRecord = {
       id: generateRecordId(), typeId: selectedTypeId, data: recordData,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'manual',
     };
-    saveRecord(rec);
-    setAllRecords(getAllRecords());
+    await saveRec(rec);
     setRecordData({});
     setCreatingRecord(false);
   };
@@ -251,7 +247,7 @@ export default function RecordsPage() {
                       <span className="text-white text-xs" style={{ fontSize: '8px' }}>{t.icon}</span>
                     </div>
                     {t.name}
-                    <span className="text-gray-600">({getRecordsByType(t.id).length})</span>
+                    <span className="text-gray-600">({allRecords.filter(r => r.typeId === t.id).length})</span>
                   </button>
                 ))}
               </div>
@@ -323,7 +319,7 @@ export default function RecordsPage() {
                               )}
                             </td>
                             <td className="py-2.5 px-4">
-                              <button onClick={() => { if (confirm('Delete this record?')) { deleteRecord(rec.id); setAllRecords(getAllRecords()); } }}
+                              <button onClick={async () => { if (confirm('Delete this record?')) { await removeRec(rec.id); } }}
                                 className="p-1 text-gray-600 hover:text-red-400 transition-colors">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                               </button>

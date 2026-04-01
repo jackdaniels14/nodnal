@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { RecordTypeDef, DataRecord as RecordData, FieldDef } from '@/lib/records/record-types';
-import { getRecordType, getRecordsByType, saveRecord, deleteRecord, generateRecordId } from '@/lib/records/record-store';
+import { useRecords, useRecordTypes, generateRecordId } from '@/lib/records/use-records';
 
 // ─── Record Form ─────────────────────────────────────────────────────────────
 
@@ -150,31 +150,30 @@ function RecordViewer({ typeDef, record }: { typeDef: RecordTypeDef; record: Rec
 export default function RecordTypePage() {
   const params = useParams();
   const typeId = params.typeId as string;
-  const [typeDef, setTypeDef] = useState<RecordTypeDef | null>(null);
-  const [records, setRecords] = useState<RecordData[]>([]);
+  const { types, loading: typesLoading } = useRecordTypes();
+  const { records, loading: recordsLoading, save: saveRecord, remove: removeRecord } = useRecords(typeId);
   const [view, setView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
   const [selectedRecord, setSelectedRecord] = useState<RecordData | null>(null);
 
-  useEffect(() => {
-    const t = getRecordType(typeId);
-    if (t) { setTypeDef(t); setRecords(getRecordsByType(typeId)); }
-  }, [typeId]);
+  const typeDef = types.find(t => t.id === typeId) ?? null;
+
+  if (typesLoading || recordsLoading) {
+    return <div className="text-center py-16"><p className="text-gray-400">Loading...</p></div>;
+  }
 
   if (!typeDef) {
     return <div className="text-center py-16"><p className="text-gray-400">Record type not found.</p></div>;
   }
 
-  const handleSave = (record: RecordData) => {
-    saveRecord(record);
-    setRecords(getRecordsByType(typeId));
+  const handleSave = async (record: RecordData) => {
+    await saveRecord(record);
     setView('list');
     setSelectedRecord(null);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Delete this record?')) return;
-    deleteRecord(id);
-    setRecords(getRecordsByType(typeId));
+    await removeRecord(id);
   };
 
   // Get primary display field (first text-like field)

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { RecordTypeDef, DataRecord, FieldDef, FieldType } from '@/lib/records/record-types';
-import { getRecordTypes, saveRecordType, getRecordsByType, getAllRecords, saveRecord, deleteRecord, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/record-store';
+import { useRecordTypes, useRecords, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/use-records';
 
 const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'text', label: 'Text' }, { value: 'number', label: 'Number' }, { value: 'currency', label: 'Currency' },
@@ -12,8 +12,8 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
 ];
 
 export default function EntriesPage() {
-  const [types, setTypes] = useState<RecordTypeDef[]>([]);
-  const [records, setRecords] = useState<DataRecord[]>([]);
+  const { types, loading: typesLoading, save: saveRecordType, remove: removeRecordType } = useRecordTypes();
+  const { records, loading: recordsLoading, save: saveRecordHook, remove: removeRecordHook } = useRecords();
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'list' | 'create-type' | 'create-record' | 'view'>('list');
@@ -28,8 +28,6 @@ export default function EntriesPage() {
   // Record form
   const [recordData, setRecordData] = useState<Record<string, unknown>>({});
 
-  useEffect(() => { setTypes(getRecordTypes()); setRecords(getAllRecords()); }, []);
-
   const filtered = useMemo(() => {
     let recs = selectedType ? records.filter(r => r.typeId === selectedType) : records;
     if (search) {
@@ -41,16 +39,16 @@ export default function EntriesPage() {
 
   const currentType = selectedType ? types.find(t => t.id === selectedType) : null;
 
-  const saveType = () => {
+  const saveType = async () => {
     if (!typeName.trim()) return;
-    saveRecordType({ id: generateTypeId(), name: typeName.trim(), icon: typeName[0].toUpperCase(), color: 'bg-emerald-500', fields: typeFields, createdAt: new Date().toISOString() });
-    setTypes(getRecordTypes()); setTypeName(''); setTypeFields([]); setView('list');
+    await saveRecordType({ id: generateTypeId(), name: typeName.trim(), icon: typeName[0].toUpperCase(), color: 'bg-emerald-500', fields: typeFields, createdAt: new Date().toISOString() });
+    setTypeName(''); setTypeFields([]); setView('list');
   };
 
-  const saveNewRecord = () => {
+  const saveNewRecord = async () => {
     if (!selectedType) return;
-    saveRecord({ id: generateRecordId(), typeId: selectedType, data: recordData, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'manual' });
-    setRecords(getAllRecords()); setRecordData({}); setView('list');
+    await saveRecordHook({ id: generateRecordId(), typeId: selectedType, data: recordData, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: 'manual' });
+    setRecordData({}); setView('list');
   };
 
   if (view === 'create-type') {
@@ -159,7 +157,7 @@ export default function EntriesPage() {
         {types.map(t => (
           <button key={t.id} onClick={() => setSelectedType(t.id)}
             className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${selectedType === t.id ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'text-gray-400 border-gray-700 hover:border-gray-500'}`}>
-            {t.name} ({getRecordsByType(t.id).length})
+            {t.name} ({records.filter(r => r.typeId === t.id).length})
           </button>
         ))}
       </div>
@@ -196,7 +194,7 @@ export default function EntriesPage() {
                       {!currentType && <td className="py-2 px-4 text-xs text-gray-300 truncate max-w-[250px]">{Object.values(rec.data).filter(v => typeof v === 'string').slice(0, 2).join(' — ') || '—'}</td>}
                       <td className="py-2 px-4 text-xs text-gray-500">{new Date(rec.createdAt).toLocaleDateString()}</td>
                       <td className="py-2 px-4">
-                        <button onClick={e => { e.stopPropagation(); if (confirm('Delete?')) { deleteRecord(rec.id); setRecords(getAllRecords()); } }}
+                        <button onClick={async e => { e.stopPropagation(); if (confirm('Delete?')) { await removeRecordHook(rec.id); } }}
                           className="p-1 text-gray-600 hover:text-red-400"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                       </td>
                     </tr>

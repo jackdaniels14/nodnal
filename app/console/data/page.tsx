@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getRecordTypes, getAllRecords, getRecordsByType } from '@/lib/records/record-store';
+import { useMemo } from 'react';
+import { useRecordTypes, useRecords } from '@/lib/records/use-records';
 
 export default function DataPage() {
-  const [types, setTypes] = useState<{ id: string; name: string; count: number }[]>([]);
-  const [totalRecords, setTotalRecords] = useState(0);
+  const { types: rawTypes } = useRecordTypes();
+  const { records } = useRecords();
 
-  useEffect(() => {
-    const rt = getRecordTypes();
-    setTypes(rt.map(t => ({ id: t.id, name: t.name, count: getRecordsByType(t.id).length })));
-    setTotalRecords(getAllRecords().length);
-  }, []);
+  const types = useMemo(() =>
+    rawTypes.map(t => ({ id: t.id, name: t.name, count: records.filter(r => r.typeId === t.id).length })),
+    [rawTypes, records]
+  );
+  const totalRecords = records.length;
 
   return (
     <div className="h-full flex flex-col">
@@ -66,7 +66,7 @@ export default function DataPage() {
           <h3 className="text-sm font-semibold text-white mb-3">Export Data</h3>
           <div className="flex gap-2">
             <button onClick={() => {
-              const data = JSON.stringify(getAllRecords(), null, 2);
+              const data = JSON.stringify(records, null, 2);
               const blob = new Blob([data], { type: 'application/json' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a'); a.href = url; a.download = 'nodnal-records.json'; a.click();
@@ -74,8 +74,7 @@ export default function DataPage() {
               Export JSON
             </button>
             <button onClick={() => {
-              const records = getAllRecords();
-              const rt = getRecordTypes();
+              const rt = rawTypes;
               const lines = records.map(r => {
                 const type = rt.find(t => t.id === r.typeId);
                 return [type?.name || '', ...Object.values(r.data).map(v => String(v ?? ''))].join(',');
