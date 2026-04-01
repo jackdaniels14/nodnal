@@ -4,8 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Block } from '@/lib/workspace-types';
 import { AgentDef, AgentMessage, AgentSession, BlockAction } from '@/lib/agents/agent-types';
 import AiSummary from '../AiSummary';
-import { getAgent } from '@/lib/agents/agent-registry';
-import { getSession, updateSession } from '@/lib/agents/agent-registry';
+import { getAgent, getSession, updateSession } from '@/lib/agents/use-agents';
 
 interface Props {
   block: Block;
@@ -26,11 +25,14 @@ export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Pro
   // Load agent def and session
   useEffect(() => {
     if (!agentDefId) return;
-    const def = getAgent(agentDefId);
-    if (def) {
-      setAgent(def);
-      setSession(getSession(def.id));
-    }
+    (async () => {
+      const def = await getAgent(agentDefId);
+      if (def) {
+        setAgent(def);
+        const sess = await getSession(def.id);
+        setSession(sess);
+      }
+    })();
   }, [agentDefId]);
 
   // Auto-scroll on new messages
@@ -51,7 +53,7 @@ export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Pro
     };
 
     const updatedMessages = [...session.messages, userMsg];
-    const updated = updateSession(agent.id, { messages: updatedMessages, status: 'running' });
+    const updated = await updateSession(agent.id, { messages: updatedMessages, status: 'running' });
     setSession(updated);
     setInput('');
     setLoading(true);
@@ -89,7 +91,7 @@ export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Pro
       };
 
       const finalMessages = [...updatedMessages, assistantMsg];
-      const finalSession = updateSession(agent.id, { messages: finalMessages, status: 'idle' });
+      const finalSession = await updateSession(agent.id, { messages: finalMessages, status: 'idle' });
       setSession(finalSession);
 
       // If the agent wants to spawn/update blocks, notify parent
@@ -103,7 +105,7 @@ export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Pro
         content: 'Error communicating with agent. Check your API key.',
         timestamp: new Date().toISOString(),
       };
-      const finalSession = updateSession(agent.id, {
+      const finalSession = await updateSession(agent.id, {
         messages: [...updatedMessages, errorMsg],
         status: 'error',
       });

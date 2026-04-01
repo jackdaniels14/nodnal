@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Block, BlockType, BlockConfig, ExpansionRule, MovementRule, fromGridId, toGridId } from '@/lib/workspace-types';
 import { APP_REGISTRY } from '@/lib/app-registry';
-import { getAgents } from '@/lib/agents/agent-registry';
+import { useAgents } from '@/lib/agents/use-agents';
 
 const BLOCK_TYPES: { type: BlockType; label: string; desc: string; icon: string }[] = [
   { type: 'stat',  label: 'Stat',   desc: 'Single number or value',        icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
@@ -68,6 +68,7 @@ function ContentPanel({ type, config, set }: { type: BlockType; config: BlockCon
   const [listInput, setListInput] = useState('');
   const [tableColInput, setTableColInput] = useState('');
   const [chartRowInput, setChartRowInput] = useState({ name: '', value: '' });
+  const { agents: allAgentDefs } = useAgents();
 
   switch (type) {
     case 'stat':
@@ -307,7 +308,7 @@ function ContentPanel({ type, config, set }: { type: BlockType; config: BlockCon
       );
 
     case 'agent': {
-      const agents = getAgents();
+      const agents = allAgentDefs;
       return (
         <div className="space-y-3">
           <Field label="Agent">

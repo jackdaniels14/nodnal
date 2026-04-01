@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AgentDef, AgentCapability } from '@/lib/agents/agent-types';
-import { getAgents, saveAgent, deleteAgent, generateAgentId } from '@/lib/agents/agent-registry';
+import { useAgents, generateAgentId } from '@/lib/agents/use-agents';
 
 const COLORS = ['bg-emerald-500', 'bg-violet-500', 'bg-blue-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500'];
 const CAPABILITIES: { value: AgentCapability; label: string }[] = [
@@ -11,7 +11,7 @@ const CAPABILITIES: { value: AgentCapability; label: string }[] = [
 ];
 
 export default function AIManagerPage() {
-  const [agents, setAgents] = useState<AgentDef[]>([]);
+  const { agents, save: saveAgent, remove: deleteAgent } = useAgents();
   const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
   const [editing, setEditing] = useState<AgentDef | null>(null);
 
@@ -24,7 +24,6 @@ export default function AIManagerPage() {
   const [color, setColor] = useState(COLORS[0]);
   const [initial, setInitial] = useState('');
 
-  useEffect(() => { setAgents(getAgents()); }, []);
 
   const resetForm = () => { setName(''); setDesc(''); setTarget(''); setCaps([]); setPrompt(''); setColor(COLORS[0]); setInitial(''); setEditing(null); };
 
@@ -34,21 +33,21 @@ export default function AIManagerPage() {
     setView('edit');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) return;
-    saveAgent({
+    await saveAgent({
       id: editing?.id ?? generateAgentId(), name: name.trim(), description: desc.trim(),
       color, initial: (initial || name[0] || 'A').toUpperCase(),
       targetUrl: target.trim() || undefined, capabilities: caps,
       systemPrompt: prompt.trim() || `You are ${name.trim()}. Follow your instructions in AGENTS.md.`,
       createdAt: editing?.createdAt ?? new Date().toISOString(),
     });
-    setAgents(getAgents()); resetForm(); setView('list');
+    resetForm(); setView('list');
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Delete this agent?')) return;
-    deleteAgent(id); setAgents(getAgents());
+    await deleteAgent(id);
   };
 
   if (view === 'create' || view === 'edit') {

@@ -13,7 +13,7 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { Block, BlockConfig, GridItem, WorkspaceState, BLOCK_DEFAULTS, buildStarterLayout, toGridId, fromGridId } from '@/lib/workspace-types';
 import { BlockAction } from '@/lib/agents/agent-types';
-import { addLinkedBlock, removeLinkedBlock, getAgent } from '@/lib/agents/agent-registry';
+import { useAgents, getSession, updateSession } from '@/lib/agents/use-agents';
 import BlockRenderer from './BlockRenderer';
 import BlockEditor from './BlockEditor';
 import AiAssistant from './AiAssistant';
@@ -63,6 +63,8 @@ interface CanvasProps {
 }
 
 export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace', initialState, onStateChange }: CanvasProps) {
+  const { agents: allAgents } = useAgents();
+  const agentMap = Object.fromEntries(allAgents.map(a => [a.id, a]));
   const [workspace, setWorkspaceRaw] = useLocalStorage<WorkspaceState>(storageKey, initialState ?? { blocks: [], layout: [] });
 
   // Wrap setWorkspace to also notify parent of state changes
@@ -246,7 +248,10 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
   };
 
   // ── Agent Block Actions ────────────────────────────────────────────────────
-  const handleBlockAction = useCallback((agentId: string, actions: BlockAction[]) => {
+  const handleBlockAction = useCallback(async (agentId: string, actions: BlockAction[]) => {
+    const spawnedBlockIds: string[] = [];
+    const removedBlockIds: string[] = [];
+
     setWorkspace(prev => {
       let blocks = [...prev.blocks];
       let layout = [...prev.layout];
@@ -271,7 +276,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
               config: { ...(action.config as BlockConfig ?? {}), agentId },
             });
             layout.push({ i: id, x: pos.x, y: pos.y, w: pos.w ?? defaults.w, h: pos.h ?? defaults.h, minW: defaults.minW, minH: defaults.minH });
-            addLinkedBlock(agentId, id);
+            spawnedBlockIds.push(id);
             break;
           }
           case 'update': {
@@ -287,13 +292,23 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
             if (!toRemove) break;
             blocks = blocks.filter(b => b.id !== action.blockId);
             layout = layout.filter(l => l.i !== action.blockId);
-            removeLinkedBlock(agentId, action.blockId);
+            removedBlockIds.push(action.blockId);
             break;
           }
         }
       }
       return { ...prev, blocks, layout };
     });
+
+    // Update linked blocks in Firestore
+    for (const blockId of spawnedBlockIds) {
+      const s = await getSession(agentId);
+      await updateSession(agentId, { linkedBlockIds: [...(s?.linkedBlockIds ?? []), blockId] });
+    }
+    for (const blockId of removedBlockIds) {
+      const s = await getSession(agentId);
+      await updateSession(agentId, { linkedBlockIds: (s?.linkedBlockIds ?? []).filter((id: string) => id !== blockId) });
+    }
   }, [setWorkspace]);
 
   const loadStarter = () => {
@@ -397,7 +412,7 @@ export default function WorkspaceCanvas({ width, storageKey = 'nodnal-workspace'
             const hasExpansion = block.config.expansionRule?.enabled;
             const hasMovement = block.config.movementRule?.enabled;
             const isExpanded = expandedBlocks.has(block.id);
-            const ownerAgent = block.config.agentId ? getAgent(block.config.agentId) : null;
+            const ownerAgent = block.config.agentId ? agentMap[block.config.agentId] ?? null : null;
             const blockZIndex = zOrder.indexOf(block.id) + 1;
             const isTouchDragging = touchDragBlockId === block.id;
             const blockStyle = block.config.style;

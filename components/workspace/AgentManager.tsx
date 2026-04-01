@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AgentDef, AgentCapability } from '@/lib/agents/agent-types';
-import { getAgents, saveAgent, deleteAgent, generateAgentId } from '@/lib/agents/agent-registry';
+import { useAgents, generateAgentId } from '@/lib/agents/use-agents';
 
 const COLORS = [
   'bg-emerald-500', 'bg-violet-500', 'bg-blue-500', 'bg-amber-500',
@@ -19,7 +19,7 @@ const CAPABILITIES: { value: AgentCapability; label: string; desc: string }[] = 
 type View = 'list' | 'create' | 'edit';
 
 export default function AgentManager() {
-  const [agents, setAgents] = useState<AgentDef[]>([]);
+  const { agents, save: saveAgent, remove: deleteAgent } = useAgents();
   const [view, setView] = useState<View>('list');
   const [editingAgent, setEditingAgent] = useState<AgentDef | null>(null);
 
@@ -32,9 +32,6 @@ export default function AgentManager() {
   const [color, setColor] = useState(COLORS[0]);
   const [initial, setInitial] = useState('');
 
-  useEffect(() => {
-    setAgents(getAgents());
-  }, []);
 
   const resetForm = () => {
     setName('');
@@ -59,7 +56,7 @@ export default function AgentManager() {
     setView('edit');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) return;
     const agent: AgentDef = {
       id: editingAgent?.id ?? generateAgentId(),
@@ -72,15 +69,13 @@ export default function AgentManager() {
       systemPrompt: systemPrompt.trim() || `You are ${name.trim()}, a helpful AI agent.`,
       createdAt: editingAgent?.createdAt ?? new Date().toISOString(),
     };
-    saveAgent(agent);
-    setAgents(getAgents());
+    await saveAgent(agent);
     resetForm();
     setView('list');
   };
 
-  const handleDelete = (id: string) => {
-    deleteAgent(id);
-    setAgents(getAgents());
+  const handleDelete = async (id: string) => {
+    await deleteAgent(id);
   };
 
   const toggleCapability = (cap: AgentCapability) => {

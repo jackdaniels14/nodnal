@@ -2,17 +2,16 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { AgentDef } from '@/lib/agents/agent-types';
-import { getAgents } from '@/lib/agents/agent-registry';
+import { useAgents } from '@/lib/agents/use-agents';
 
 export default function AgentsPage() {
-  const [agents, setAgents] = useState<AgentDef[]>([]);
+  const { agents } = useAgents();
   const [selectedAgent, setSelectedAgent] = useState<AgentDef | null>(null);
   const [messages, setMessages] = useState<{ role: string; content: string; ts: string }[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setAgents(getAgents()); }, []);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
   const send = async () => {

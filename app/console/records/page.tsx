@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { RecordTypeDef, DataRecord, FieldDef, FieldType } from '@/lib/records/record-types';
 import { useRecordTypes, useRecords, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/use-records';
 import { stateColor } from '@/lib/records/state-colors';
-import { getAgents } from '@/lib/agents/agent-registry';
-import { AgentDef } from '@/lib/agents/agent-types';
+import { useAgents } from '@/lib/agents/use-agents';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -93,7 +92,7 @@ export default function RecordsPage() {
   // Data
   const { types, save: saveType, remove: removeType } = useRecordTypes();
   const { records: allRecords, save: saveRec, remove: removeRec, refresh: refreshRecords } = useRecords();
-  const [agents, setAgents] = useState<AgentDef[]>([]);
+  const { agents } = useAgents();
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
 
   // Auto-select the first type when types load
@@ -117,9 +116,6 @@ export default function RecordsPage() {
   const [creatingRecord, setCreatingRecord] = useState(false);
   const [recordData, setRecordData] = useState<Record<string, unknown>>({});
 
-  useEffect(() => {
-    setAgents(getAgents());
-  }, []);
 
   const setFilter = (key: keyof Filters, value: string) =>
     setFilters(prev => ({ ...prev, [key]: value }));
