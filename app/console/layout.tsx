@@ -15,6 +15,42 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
     if (!loading && !user) router.replace('/login');
   }, [user, loading, router]);
 
+  // iOS keyboard detection — add class to prevent scroll jump
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        document.documentElement.classList.add('keyboard-open');
+        // Store current scroll position of main container
+        const main = document.querySelector('main');
+        if (main) {
+          const scrollTop = main.scrollTop;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              // Restore scroll position after iOS adjusts
+              main.scrollTop = scrollTop;
+              // Then smoothly scroll input into view
+              (e.target as HTMLElement)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+          });
+        }
+      }
+    };
+    const onFocusOut = (e: FocusEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        document.documentElement.classList.remove('keyboard-open');
+      }
+    };
+
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-900">

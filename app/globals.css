@@ -17,7 +17,6 @@ body {
 }
 
 /* ─── iOS keyboard fixes ─────────────────────────────────────────────────── */
-/* Prevent iOS from scrolling the whole page when keyboard opens */
 @supports (height: 100dvh) {
   html, body {
     height: 100dvh;
@@ -27,9 +26,23 @@ body {
   }
 }
 
-/* Scroll input into view when focused on iOS */
-input:focus, textarea:focus {
-  scroll-margin-bottom: 120px;
+/* Prevent iOS rubber-band overscroll on the body */
+body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+/* Fix iOS scroll jump on input focus — pin scrollable containers */
+main, [data-scroll-container] {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: auto;
+}
+
+/* When keyboard is visible, prevent scroll jump */
+@supports (height: 100dvh) {
+  .keyboard-open main {
+    overflow: hidden;
+  }
 }
 
 /* ─── iOS-style wiggle for touch drag ─────────────────────────────────────── */

@@ -348,7 +348,6 @@ export default function AgentsPage() {
                 send();
               }
             }}
-            onFocus={() => { setTimeout(() => inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 300); }}
             placeholder={`Message ${selectedAgent?.name || 'agent'}... (type / to switch)`}
             className="flex-1 px-3 py-2.5 bg-transparent text-sm text-gray-100 placeholder-gray-500 focus:outline-none"
           />
