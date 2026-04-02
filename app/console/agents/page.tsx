@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { AgentDef } from '@/lib/agents/agent-types';
-import { useAgents, useAgentSession, useAgentMemory } from '@/lib/agents/use-agents';
+import { useAgents, useAgentSession, useAgentMemory, updateSession } from '@/lib/agents/use-agents';
 import { generateTaskId } from '@/lib/agents/agent-tasks';
 
 type View = 'status' | 'chat';
@@ -25,6 +25,30 @@ export default function AgentsPage() {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
+
+  // Load messages from Firestore session when switching agents
+  useEffect(() => {
+    if (session?.messages?.length) {
+      setMessages(session.messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        ts: m.timestamp,
+      })));
+    }
+  }, [session?.agentId]);
+
+  const saveMessages = async (msgs: { role: string; content: string; ts: string }[]) => {
+    if (!selectedAgent) return;
+    await updateSession(selectedAgent.id, {
+      messages: msgs.map((m, i) => ({
+        id: `msg-${i}`,
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content,
+        timestamp: m.ts,
+      })),
+      status: 'idle',
+    });
+  };
 
   const openChat = (agent: AgentDef) => {
     setSelectedAgent(agent);
@@ -56,9 +80,14 @@ export default function AgentsPage() {
         }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.content, ts: new Date().toISOString() }]);
+      const withReply = [...updated, { role: 'assistant', content: data.content, ts: new Date().toISOString() }];
+      setMessages(withReply);
+      // Persist to Firestore
+      await saveMessages(withReply);
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Error communicating with agent.', ts: new Date().toISOString() }]);
+      const withError = [...updated, { role: 'assistant', content: 'Error communicating with agent.', ts: new Date().toISOString() }];
+      setMessages(withError);
+      await saveMessages(withError);
     }
     setLoading(false);
   };
@@ -68,11 +97,10 @@ export default function AgentsPage() {
     const taskId = generateTaskId();
     const instruction = input.trim();
     setInput('');
-    setMessages(prev => [...prev, {
-      role: 'system',
-      content: `Sent to ${selectedAgent.name} in background: "${instruction}"`,
-      ts: new Date().toISOString(),
-    }]);
+    const sysMsg = { role: 'system', content: `Sent to ${selectedAgent.name} in background: "${instruction}"`, ts: new Date().toISOString() };
+    const updated = [...messages, sysMsg];
+    setMessages(updated);
+    await saveMessages(updated);
 
     try {
       await fetch('/api/agents/task', {
