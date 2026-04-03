@@ -15,21 +15,18 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
     if (!loading && !user) router.replace('/login');
   }, [user, loading, router]);
 
-  // iOS keyboard detection — add class to prevent scroll jump
+  // iOS keyboard detection — prevent scroll jump
   useEffect(() => {
     const onFocusIn = (e: FocusEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') {
         document.documentElement.classList.add('keyboard-open');
-        // Store current scroll position of main container
         const main = document.querySelector('main');
         if (main) {
           const scrollTop = main.scrollTop;
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              // Restore scroll position after iOS adjusts
               main.scrollTop = scrollTop;
-              // Then smoothly scroll input into view
               (e.target as HTMLElement)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             });
           });
@@ -42,7 +39,6 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
         document.documentElement.classList.remove('keyboard-open');
       }
     };
-
     document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
     return () => {
@@ -65,19 +61,29 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
   return (
     <div className="flex h-[100dvh] bg-gray-900 overflow-hidden">
+      {/* Mobile overlay (<768px) */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-20 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 z-20 bg-black/60 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
-      <div className={`fixed inset-y-0 left-0 z-30 transform lg:hidden transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className={`fixed inset-y-0 left-0 z-30 transform md:hidden transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <Sidebar />
       </div>
-      <div className="hidden lg:flex lg:flex-shrink-0">
+
+      {/* Tablet rail (768px - 1023px) */}
+      <div className="hidden md:flex lg:hidden flex-shrink-0">
+        <Sidebar collapsed />
+      </div>
+
+      {/* Desktop full sidebar (1024px+) */}
+      <div className="hidden lg:flex flex-shrink-0">
         <Sidebar />
       </div>
+
+      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
         <div className="h-12 px-4 flex items-center justify-between border-b border-gray-800 bg-gray-900 flex-shrink-0">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 text-gray-400 hover:text-white mr-3">
+          {/* Hamburger — only on mobile (<768px) */}
+          <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 text-gray-400 hover:text-white mr-3">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>

@@ -51,8 +51,22 @@ const BOTTOM_ITEMS = [
   },
 ];
 
-function UserFooter() {
+function UserFooter({ collapsed }: { collapsed: boolean }) {
   const { user, signOut } = useAuth();
+  if (collapsed) {
+    return (
+      <div className="p-2 border-t border-gray-800 flex justify-center">
+        <button onClick={signOut} className="w-9 h-9 bg-gray-700 rounded-full flex items-center justify-center" title={user?.displayName || 'Sign out'}>
+          {user?.photoURL ? (
+            <img src={user.photoURL} alt="" className="w-9 h-9 rounded-full" />
+          ) : (
+            <span className="text-xs text-gray-300 font-medium">{(user?.displayName?.[0] || user?.email?.[0] || '?').toUpperCase()}</span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="p-3 border-t border-gray-800">
       <div className="flex items-center gap-2">
@@ -77,7 +91,23 @@ function UserFooter() {
   );
 }
 
-export default function Sidebar() {
+function NavItem({ item, active, collapsed }: { item: typeof NAV_ITEMS[0]; active: boolean; collapsed: boolean }) {
+  return (
+    <Link href={item.href} title={collapsed ? item.name : undefined}
+      className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} ${collapsed ? 'px-0 py-3' : 'px-3 py-2.5'} text-sm rounded-lg transition-colors ${
+        active
+          ? 'bg-emerald-500/15 text-emerald-400'
+          : 'text-gray-400 hover:text-white hover:bg-gray-800'
+      }`}>
+      <svg className={`${collapsed ? 'w-5 h-5' : 'w-4.5 h-4.5'} flex-shrink-0`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={item.icon} />
+      </svg>
+      {!collapsed && item.name}
+    </Link>
+  );
+}
+
+export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const pathname = usePathname();
 
   const isActive = (href: string, exact?: boolean) => {
@@ -86,51 +116,31 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 w-60">
+    <div className={`flex flex-col h-full bg-gray-900 ${collapsed ? 'w-14' : 'w-60'} transition-all duration-200`}>
       {/* Logo */}
-      <div className="h-14 px-4 flex items-center border-b border-gray-800">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+      <div className={`h-14 ${collapsed ? 'px-2' : 'px-4'} flex items-center ${collapsed ? 'justify-center' : ''} border-b border-gray-800`}>
+        <div className={`flex items-center ${collapsed ? '' : 'gap-2.5'}`}>
+          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <span className="text-white text-sm font-bold">N</span>
           </div>
-          <span className="text-sm font-bold text-white">Nodnal</span>
+          {!collapsed && <span className="text-sm font-bold text-white">Nodnal</span>}
         </div>
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+      <nav className={`flex-1 ${collapsed ? 'px-1.5' : 'px-2'} py-3 space-y-0.5 overflow-y-auto`}>
         {NAV_ITEMS.map(item => (
-          <Link key={item.name} href={item.href}
-            className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors ${
-              isActive(item.href, item.exact)
-                ? 'bg-emerald-500/15 text-emerald-400'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
-            }`}>
-            <svg className="w-4.5 h-4.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={item.icon} />
-            </svg>
-            {item.name}
-          </Link>
+          <NavItem key={item.name} item={item} active={isActive(item.href, item.exact)} collapsed={collapsed} />
         ))}
 
         <div className="pt-3 mt-3 border-t border-gray-800 space-y-0.5">
           {BOTTOM_ITEMS.map(item => (
-            <Link key={item.name} href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors ${
-                isActive(item.href)
-                  ? 'bg-emerald-500/15 text-emerald-400'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}>
-              <svg className="w-4.5 h-4.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={item.icon} />
-              </svg>
-              {item.name}
-            </Link>
+            <NavItem key={item.name} item={item} active={isActive(item.href)} collapsed={collapsed} />
           ))}
         </div>
       </nav>
 
-      <UserFooter />
+      <UserFooter collapsed={collapsed} />
     </div>
   );
 }

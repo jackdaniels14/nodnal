@@ -45,6 +45,13 @@ main, [data-scroll-container] {
   }
 }
 
+/* ─── iPad safe areas ────────────────────────────────────────────────────── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 /* ─── iOS-style wiggle for touch drag ─────────────────────────────────────── */
 @keyframes block-wiggle {
   0%, 100% { transform: rotate(-0.5deg); }

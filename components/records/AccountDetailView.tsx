@@ -40,7 +40,7 @@ export default function AccountDetailView({ typeDef, record }: { typeDef: Record
   return (
     <div className="space-y-4">
       {/* Top Row: General Info + Contacts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         {/* Top Left: General Info */}
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
@@ -175,7 +175,7 @@ export default function AccountDetailView({ typeDef, record }: { typeDef: Record
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Account Notes & Summary</h3>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-4">
           {/* Notes Chat */}
           <div className="flex flex-col" style={{ minHeight: '250px' }}>
             <p className="text-xs text-gray-600 mb-3">Add notes about this account. AI agents can also contribute. Type <code className="text-emerald-400">/agentname</code> to tag an agent.</p>
