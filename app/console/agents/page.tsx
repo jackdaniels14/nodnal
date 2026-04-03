@@ -18,24 +18,50 @@ export default function AgentsPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [showAgentPicker, setShowAgentPicker] = useState(false);
   const [agentFilter, setAgentFilter] = useState('');
+  const draftsRef = useRef<Record<string, string>>({});
+  const loadedSessionRef = useRef<string | null>(null);
 
   const { session } = useAgentSession(selectedAgent?.id ?? null);
   const { memories } = useAgentMemory(selectedAgent?.id ?? null);
+
+  // Restore last agent and view from sessionStorage on mount
+  useEffect(() => {
+    const lastAgentId = sessionStorage.getItem('nodnal-last-agent');
+    const lastView = sessionStorage.getItem('nodnal-agent-view');
+    if (lastAgentId && agents.length > 0) {
+      const agent = agents.find(a => a.id === lastAgentId);
+      if (agent) {
+        setSelectedAgent(agent);
+        setView((lastView as View) || 'chat');
+      }
+    }
+  }, [agents]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // Load messages from Firestore session when switching agents
+  // Load messages from Firestore session when session data arrives
   useEffect(() => {
-    if (session?.messages?.length) {
+    if (!session) return;
+    // Only load if we haven't already loaded this session's messages
+    if (loadedSessionRef.current === session.agentId) return;
+    loadedSessionRef.current = session.agentId;
+
+    if (session.messages?.length) {
       setMessages(session.messages.map(m => ({
         role: m.role,
         content: m.content,
         ts: m.timestamp,
       })));
+    } else {
+      setMessages([]);
     }
-  }, [session?.agentId]);
+
+    // Restore draft for this agent
+    const draft = draftsRef.current[session.agentId] || '';
+    setInput(draft);
+  }, [session]);
 
   const saveMessages = async (msgs: { role: string; content: string; ts: string }[]) => {
     if (!selectedAgent) return;
@@ -51,9 +77,20 @@ export default function AgentsPage() {
   };
 
   const openChat = (agent: AgentDef) => {
+    // Save current draft before switching
+    if (selectedAgent && input.trim()) {
+      draftsRef.current[selectedAgent.id] = input;
+    }
+
+    loadedSessionRef.current = null; // Reset so session loads fresh
     setSelectedAgent(agent);
-    setMessages([]);
     setView('chat');
+    setInput(draftsRef.current[agent.id] || '');
+
+    // Persist to sessionStorage so we restore on page return
+    sessionStorage.setItem('nodnal-last-agent', agent.id);
+    sessionStorage.setItem('nodnal-agent-view', 'chat');
+
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
@@ -204,7 +241,7 @@ export default function AgentsPage() {
     <div className="h-full flex flex-col">
       {/* Header bar */}
       <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3 flex-shrink-0">
-        <button onClick={() => setView('status')} className="p-1 text-gray-400 hover:text-white transition-colors">
+        <button onClick={() => { setView('status'); sessionStorage.setItem('nodnal-agent-view', 'status'); if (selectedAgent && input.trim()) draftsRef.current[selectedAgent.id] = input; }} className="p-1 text-gray-400 hover:text-white transition-colors">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
@@ -353,6 +390,8 @@ export default function AgentsPage() {
             onChange={e => {
               const val = e.target.value;
               setInput(val);
+              // Save draft
+              if (selectedAgent) draftsRef.current[selectedAgent.id] = val;
               // Detect /agentname pattern
               const slashMatch = val.match(/\/(\w*)$/);
               if (slashMatch) {

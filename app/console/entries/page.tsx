@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { RecordTypeDef, DataRecord, FieldDef, FieldType } from '@/lib/records/record-types';
 import { useRecordTypes, useRecords, generateTypeId, generateFieldId, generateRecordId } from '@/lib/records/use-records';
 import AccountDetailView from '@/components/records/AccountDetailView';
+import { useDraft } from '@/lib/use-draft';
 
 const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'text', label: 'Text' }, { value: 'number', label: 'Number' }, { value: 'currency', label: 'Currency' },
@@ -21,7 +22,7 @@ export default function EntriesPage() {
   useEffect(() => {
     if (types.length > 0 && !selectedType) setSelectedType(types[0].id);
   }, [types, selectedType]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useDraft('entries-search');
   const [view, setView] = useState<'list' | 'create-type' | 'create-record' | 'view'>('list');
   const [viewRecord, setViewRecord] = useState<DataRecord | null>(null);
 
