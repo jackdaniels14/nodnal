@@ -61,9 +61,83 @@ function buildSystemPrompt(body: {
 
   parts.push(`\nWhen responding, stay in character as ${name}. Be helpful and concise — Landon reads on iPad.`);
   parts.push(`Read AGENT_ROLES.md and CREDENTIALS.md in your workspace for your full rules and login credentials.`);
-  parts.push(`You can create, update, or remove blocks in the workspace by including a <block-actions>[JSON array]</block-actions> tag in your response.`);
+  parts.push(`
+You can take actions in the Nodnal workspace by including a single <agent-actions>[JSON array]</agent-actions> tag at the end of your response. Each entry is one action. Supported kinds:
+
+  Workspace blocks:
+    { "kind": "block.spawn",  "blockType": "text|note|table|stat|chart", "title": "...", "config": {...} }
+    { "kind": "block.update", "blockId": "block-...",  "title": "...", "config": {...} }
+    { "kind": "block.remove", "blockId": "block-..." }
+
+  Firestore data (any collection is allowed — properties, accounts, memories, etc.):
+    { "kind": "firestore.create", "collection": "properties", "data": { ... } }
+    { "kind": "firestore.update", "collection": "properties", "id": "abc123", "data": { ...patch... } }
+    { "kind": "firestore.remove", "collection": "properties", "id": "abc123" }
+
+Rules:
+- Only emit the <agent-actions> tag when you actually need to take actions. Most replies have none.
+- Max 20 actions per response.
+- Every firestore write is audited to agent-audit — do not write junk.
+- Put the tag at the very end of your message, after any prose. Emit exactly one tag.`);
 
   return parts.join('\n');
+}
+
+// ─── Agent action parsing ───────────────────────────────────────────────────
+// Parses the new <agent-actions> format (unified kind field) and the legacy
+// <block-actions> format (flat action field). Splits the result into the two
+// arrays the client needs: blockActions (executed in WorkspaceCanvas) and
+// firestoreActions (executed in AgentChat via the client Firestore SDK).
+
+type ParsedActions = {
+  content: string;
+  blockActions: unknown[];
+  firestoreActions: unknown[];
+};
+
+function parseActions(raw: string): ParsedActions {
+  let content = raw;
+  const blockActions: unknown[] = [];
+  const firestoreActions: unknown[] = [];
+
+  const agentMatch = raw.match(/<agent-actions>([\s\S]*?)<\/agent-actions>/);
+  if (agentMatch) {
+    content = raw.replace(/<agent-actions>[\s\S]*?<\/agent-actions>/, '').trim();
+    try {
+      const parsed = JSON.parse(agentMatch[1]);
+      if (Array.isArray(parsed)) {
+        for (const entry of parsed) {
+          if (!entry || typeof entry !== 'object') continue;
+          const kind = (entry as { kind?: string }).kind;
+          if (typeof kind !== 'string') continue;
+          if (kind.startsWith('firestore.')) {
+            firestoreActions.push(entry);
+          } else if (kind.startsWith('block.')) {
+            // Translate block.spawn/update/remove → legacy {action, ...} shape
+            // that WorkspaceCanvas.handleBlockAction already understands.
+            const { kind: _k, ...rest } = entry as Record<string, unknown>;
+            blockActions.push({ action: kind.slice('block.'.length), ...rest });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[agent-chat] agent-actions JSON parse failed:', err);
+    }
+  }
+
+  // Legacy <block-actions> — kept for backward compatibility.
+  const legacyMatch = content.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
+  if (legacyMatch) {
+    content = content.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
+    try {
+      const parsed = JSON.parse(legacyMatch[1]);
+      if (Array.isArray(parsed)) blockActions.push(...parsed);
+    } catch (err) {
+      console.warn('[agent-chat] block-actions JSON parse failed:', err);
+    }
+  }
+
+  return { content, blockActions, firestoreActions };
 }
 
 export async function POST(req: NextRequest) {
@@ -89,18 +163,8 @@ export async function POST(req: NextRequest) {
       const sessionKey = `agent:main:nodnal-${agentId || 'default'}`;
       const rawContent = await callOpenClawBridge(sessionKey, prompt, systemPrompt);
 
-      // Parse block actions
-      let content = rawContent;
-      let blockActions: unknown[] = [];
-      const match = rawContent.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
-      if (match) {
-        try {
-          blockActions = JSON.parse(match[1]);
-          content = rawContent.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
-        } catch { /* keep raw */ }
-      }
-
-      return NextResponse.json({ agentId, content, blockActions });
+      const { content, blockActions, firestoreActions } = parseActions(rawContent);
+      return NextResponse.json({ agentId, content, blockActions, firestoreActions });
 
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -232,18 +296,8 @@ async function callAnthropicApi(agentId: string, messages: { role: string; conte
     }
 
     const text = collectedText.join('\n').trim();
-
-    let content = text;
-    let blockActions: unknown[] = [];
-    const match = text.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
-    if (match) {
-      try {
-        blockActions = JSON.parse(match[1]);
-        content = text.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
-      } catch (err) {
-        console.warn('[agent-chat] block-actions JSON parse failed:', err);
-      }
-    }
+    const parsed = parseActions(text);
+    let content = parsed.content;
 
     if (!content) {
       const hint = finalStopReason === 'max_tokens'
@@ -254,7 +308,12 @@ async function callAnthropicApi(agentId: string, messages: { role: string; conte
       content = `Agent returned no text${hint}. Try rephrasing or narrowing the request.`;
     }
 
-    return NextResponse.json({ agentId, content, blockActions });
+    return NextResponse.json({
+      agentId,
+      content,
+      blockActions: parsed.blockActions,
+      firestoreActions: parsed.firestoreActions,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[agent-chat] anthropic call failed:', msg);

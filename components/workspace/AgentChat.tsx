@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Block } from '@/lib/workspace-types';
-import { AgentDef, AgentMessage, AgentSession, BlockAction } from '@/lib/agents/agent-types';
+import { AgentDef, AgentMessage, AgentSession, BlockAction, FirestoreAction } from '@/lib/agents/agent-types';
 import AiSummary from '../AiSummary';
 import { getAgent, getSession, updateSession } from '@/lib/agents/use-agents';
+import { runFirestoreActions } from '@/lib/agents/firestore-actions';
 
 interface Props {
   block: Block;
@@ -82,10 +83,21 @@ export default function AgentChat({ block, onBlockAction, workspaceBlocks }: Pro
 
       const data = await res.json();
 
+      // Execute firestore actions (any collection — audited in agent-audit).
+      let firestoreSummary = '';
+      if (Array.isArray(data.firestoreActions) && data.firestoreActions.length > 0) {
+        const results = await runFirestoreActions(agent.id, data.firestoreActions as FirestoreAction[]);
+        const ok = results.filter(r => r.ok).length;
+        const failed = results.length - ok;
+        firestoreSummary = failed === 0
+          ? `\n\n_Applied ${ok} data ${ok === 1 ? 'change' : 'changes'}._`
+          : `\n\n_Applied ${ok}/${results.length} data changes. Failures: ${results.filter(r => !r.ok).map(r => `${r.collection}: ${r.error}`).join('; ')}_`;
+      }
+
       const assistantMsg: AgentMessage = {
         id: `msg-${Date.now()}`,
         role: 'assistant',
-        content: data.content,
+        content: (data.content ?? '') + firestoreSummary,
         timestamp: new Date().toISOString(),
         blockActions: data.blockActions,
       };

@@ -65,6 +65,20 @@ export interface BlockAction {
   position?: { x: number; y: number; w: number; h: number };
 }
 
+// ─── Firestore Actions ──────────────────────────────────────────────────────
+// Commands an agent can issue to create/update/remove Firestore documents.
+// Executed client-side so they inherit the user's auth (firestore.rules
+// require request.auth != null for writes).
+
+export type FirestoreActionKind = 'firestore.create' | 'firestore.update' | 'firestore.remove';
+
+export interface FirestoreAction {
+  kind: FirestoreActionKind;
+  collection: string;          // any collection — no allowlist
+  id?: string;                 // required for update/remove; optional for create (auto-id if omitted)
+  data?: Record<string, unknown>;
+}
+
 // ─── Block Ownership ────────────────────────────────────────────────────────
 // These fields are added to BlockConfig to link blocks to agents.
 
