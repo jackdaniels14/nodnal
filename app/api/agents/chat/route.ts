@@ -120,6 +120,47 @@ export async function POST(req: NextRequest) {
 
 // ─── Direct Anthropic API ───────────────────────────────────────────────────
 // Used for non-browser agents, with web_search + web_fetch tools for web access.
+//
+// Reliability notes:
+// - web_search / web_fetch are server-side tools: Anthropic executes them and
+//   streams the results back inside the same response. The model may stop with
+//   stop_reason === 'pause_turn' when a long tool chain is still in flight —
+//   we must resume by sending the assistant turn back and continuing.
+// - max_tokens must be large enough to hold tool results + final answer.
+// - Transient 429/5xx get retried with exponential backoff.
+// - System prompt gets cache_control so repeated turns hit the prompt cache.
+
+import type Anthropic from '@anthropic-ai/sdk';
+
+const MAX_TOKENS = 16384;
+const MAX_TURN_LOOPS = 6;
+const MAX_RETRIES = 3;
+
+function isRetryable(err: unknown): boolean {
+  const e = err as { status?: number; message?: string };
+  if (e?.status && (e.status === 429 || e.status >= 500)) return true;
+  const msg = e?.message || '';
+  return /overloaded|rate.?limit|timeout|ECONNRESET|fetch failed/i.test(msg);
+}
+
+async function createWithRetry(
+  client: Anthropic,
+  params: Anthropic.Messages.MessageCreateParamsNonStreaming,
+): Promise<Anthropic.Messages.Message> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await client.messages.create(params);
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryable(err) || attempt === MAX_RETRIES - 1) throw err;
+      const delay = 500 * Math.pow(2, attempt) + Math.random() * 250;
+      console.warn(`[agent-chat] retryable error, retry ${attempt + 1}/${MAX_RETRIES} in ${Math.round(delay)}ms:`, (err as Error)?.message);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
 
 async function callAnthropicApi(agentId: string, messages: { role: string; content: string }[], systemPrompt: string) {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -131,34 +172,67 @@ async function callAnthropicApi(agentId: string, messages: { role: string; conte
     });
   }
 
-  const Anthropic = (await import('@anthropic-ai/sdk')).default;
-  const client = new Anthropic({ apiKey });
+  const AnthropicSdk = (await import('@anthropic-ai/sdk')).default;
+  const client = new AnthropicSdk({ apiKey });
 
-  // Build proper conversation history, only user/assistant roles
-  const chatMessages = messages
-    .filter((m: { role: string }) => m.role === 'user' || m.role === 'assistant')
-    .map((m: { role: string; content: string }) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    }));
+  const chatMessages: Anthropic.Messages.MessageParam[] = messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+  if (chatMessages.length === 0) {
+    chatMessages.push({ role: 'user', content: '' });
+  }
+
+  // Conversation state — grows as we loop on pause_turn.
+  const conversation: Anthropic.Messages.MessageParam[] = [...chatMessages];
+  const collectedText: string[] = [];
+  let finalStopReason: string | null = null;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: systemPrompt,
-      tools: [
-        { name: 'web_search', type: 'web_search_20250305' as const },
-        { name: 'web_fetch', type: 'web_fetch_20250910' as const },
-      ],
-      messages: chatMessages.length > 0 ? chatMessages : [{ role: 'user' as const, content: '' }],
-    });
+    for (let loop = 0; loop < MAX_TURN_LOOPS; loop++) {
+      const response = await createWithRetry(client, {
+        model: 'claude-sonnet-4-6',
+        max_tokens: MAX_TOKENS,
+        system: [
+          {
+            type: 'text',
+            text: systemPrompt,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        tools: [
+          { name: 'web_search', type: 'web_search_20250305' as const },
+          { name: 'web_fetch', type: 'web_fetch_20250910' as const },
+        ],
+        messages: conversation,
+      });
 
-    // Extract text from response, handling both text and tool_use content blocks
-    const text = response.content
-      .filter(b => b.type === 'text')
-      .map(b => b.type === 'text' ? b.text : '')
-      .join('\n');
+      finalStopReason = response.stop_reason;
+
+      // Log any failed server tool calls so flakiness is debuggable.
+      for (const block of response.content) {
+        if (block.type === 'web_search_tool_result' || block.type === 'web_fetch_tool_result') {
+          const content = (block as { content?: unknown }).content;
+          if (content && typeof content === 'object' && 'type' in content && (content as { type: string }).type === 'web_search_tool_result_error') {
+            console.warn(`[agent-chat] ${block.type} error:`, content);
+          }
+        }
+        if (block.type === 'text') collectedText.push(block.text);
+      }
+
+      // Only pause_turn means the server wants us to continue the same turn.
+      // Push the assistant response back and loop.
+      if (response.stop_reason === 'pause_turn') {
+        conversation.push({ role: 'assistant', content: response.content });
+        continue;
+      }
+
+      // Any other stop reason: we're done (end_turn, max_tokens, stop_sequence, tool_use).
+      break;
+    }
+
+    const text = collectedText.join('\n').trim();
+
     let content = text;
     let blockActions: unknown[] = [];
     const match = text.match(/<block-actions>([\s\S]*?)<\/block-actions>/);
@@ -166,11 +240,24 @@ async function callAnthropicApi(agentId: string, messages: { role: string; conte
       try {
         blockActions = JSON.parse(match[1]);
         content = text.replace(/<block-actions>[\s\S]*?<\/block-actions>/, '').trim();
-      } catch { /* keep raw */ }
+      } catch (err) {
+        console.warn('[agent-chat] block-actions JSON parse failed:', err);
+      }
+    }
+
+    if (!content) {
+      const hint = finalStopReason === 'max_tokens'
+        ? ' (hit max_tokens — web results were too large for the response budget)'
+        : finalStopReason
+        ? ` (stop_reason=${finalStopReason})`
+        : '';
+      content = `Agent returned no text${hint}. Try rephrasing or narrowing the request.`;
     }
 
     return NextResponse.json({ agentId, content, blockActions });
   } catch (e) {
-    return NextResponse.json({ agentId, content: `API error: ${e instanceof Error ? e.message : String(e)}`, blockActions: [] });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[agent-chat] anthropic call failed:', msg);
+    return NextResponse.json({ agentId, content: `API error: ${msg}`, blockActions: [] });
   }
 }
